@@ -593,10 +593,11 @@ def cmd_interactive(enable_thinking: bool = True):
                 state,
                 thinking_max_length=500,
                 tool_result_max_length=DisplayLimits.TOOL_RESULT_FINAL,
-                show_thinking=False,
-                show_tools=False,
-                show_response_panel=False,
+                show_thinking=True,
+                show_tools=True,
+                show_response_panel=True,
             )
+            console.print()  # 与下一个输入提示保持距离
 
         except KeyboardInterrupt:
             console.print("\n[dim]Goodbye![/dim]")
