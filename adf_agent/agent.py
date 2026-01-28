@@ -13,7 +13,6 @@ from typing import Optional, Iterator
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import AIMessage, AIMessageChunk
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -34,6 +33,50 @@ DEFAULT_TEMPERATURE = 1.0  # Extended Thinking 要求温度为 1.0
 DEFAULT_THINKING_BUDGET = 10000
 
 
+def get_claude_config() -> dict:
+    """
+    获取 Claude 配置，支持多种 provider
+
+    支持的 provider：
+    - anthropic (默认): 直接使用 Anthropic API
+    - azure_foundry: 使用 Azure AI Foundry
+
+    环境变量：
+    - CLAUDE_PROVIDER: 选择 provider (anthropic 或 azure_foundry)
+
+    Anthropic (默认):
+    - ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN
+    - ANTHROPIC_BASE_URL (可选)
+
+    Azure AI Foundry:
+    - ANTHROPIC_FOUNDRY_API_KEY
+    - ANTHROPIC_FOUNDRY_BASE_URL
+
+    Returns:
+        包含 model_class 和 init_kwargs 的配置字典
+    """
+    provider = os.getenv("CLAUDE_PROVIDER", "anthropic").lower()
+
+    if provider == "azure_foundry":
+        from .azure_claude import ChatAzureFoundryClaude
+        return {
+            "model_class": ChatAzureFoundryClaude,
+            "init_kwargs": {
+                "api_key": os.getenv("ANTHROPIC_FOUNDRY_API_KEY"),
+                "base_url": os.getenv("ANTHROPIC_FOUNDRY_BASE_URL"),
+            },
+        }
+    else:
+        from langchain_anthropic import ChatAnthropic
+        return {
+            "model_class": ChatAnthropic,
+            "init_kwargs": {
+                "api_key": os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"),
+                "base_url": os.getenv("ANTHROPIC_BASE_URL"),
+            },
+        }
+
+
 def get_anthropic_credentials() -> tuple[str | None, str | None]:
     """
     获取 Anthropic API 认证信息
@@ -52,7 +95,8 @@ def get_anthropic_credentials() -> tuple[str | None, str | None]:
 
 def check_api_credentials() -> bool:
     """检查是否配置了 API 认证"""
-    api_key, _ = get_anthropic_credentials()
+    config = get_claude_config()
+    api_key = config["init_kwargs"].get("api_key")
     return api_key is not None
 
 
@@ -144,21 +188,28 @@ class ADFAgent:
         - system_prompt: 系统提示
         - context_schema: 上下文类型（供 ToolRuntime 使用）
         - checkpointer: 会话记忆
+
+        支持多种 provider:
+        - anthropic (默认): 使用 init_chat_model
+        - azure_foundry: 使用 ChatAzureFoundryClaude 直接实例化
         """
-        # 获取认证信息
-        api_key, base_url = get_anthropic_credentials()
+        # 获取 provider 配置
+        config = get_claude_config()
+        model_class = config["model_class"]
+        provider_kwargs = config["init_kwargs"]
 
         # 构建初始化参数
         init_kwargs = {
+            "model": self.model_name,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
 
-        # 添加认证参数（支持第三方代理）
-        if api_key:
-            init_kwargs["api_key"] = api_key
-        if base_url:
-            init_kwargs["base_url"] = base_url
+        # 添加认证参数
+        if provider_kwargs.get("api_key"):
+            init_kwargs["api_key"] = provider_kwargs["api_key"]
+        if provider_kwargs.get("base_url"):
+            init_kwargs["base_url"] = provider_kwargs["base_url"]
 
         # Extended Thinking 配置
         if self.enable_thinking:
@@ -168,10 +219,9 @@ class ADFAgent:
             }
 
         # 初始化模型
-        model = init_chat_model(
-            self.model_name,
-            **init_kwargs,
-        )
+        # 对于 azure_foundry，直接使用 model_class 实例化
+        # 对于 anthropic，也直接使用 ChatAnthropic 实例化（保持一致性）
+        model = model_class(**init_kwargs)
 
         # 创建 Agent
         agent = create_agent(
