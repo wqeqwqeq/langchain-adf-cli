@@ -13,3 +13,5 @@ skills-agent-proto
 workspace
 *.ipynb
 .env
+mlruns
+mlflow.db

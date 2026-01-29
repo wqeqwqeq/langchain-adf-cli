@@ -23,6 +23,8 @@ dependencies = [
     "azure-storage-blob>=12.19.0",
     # HTTP requests (for azure_tools)
     "requests>=2.31.0",
+    # Observability
+    "mlflow>=2.14.0",
 ]
 
 [project.scripts]

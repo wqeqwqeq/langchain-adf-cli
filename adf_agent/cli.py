@@ -42,6 +42,10 @@ from .stream import (
 # 加载环境变量
 load_dotenv(override=True)
 
+# MLflow tracking
+from .observability import setup_mlflow_tracking
+setup_mlflow_tracking()
+
 # Rich Console 配置
 console = Console(
     legacy_windows=(sys.platform == 'win32'),
