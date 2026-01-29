@@ -69,13 +69,20 @@ class TokenTracker:
         if isinstance(usage, dict):
             input_tokens = usage.get("input_tokens", 0) or 0
             output_tokens = usage.get("output_tokens", 0) or 0
-            cache_creation = usage.get("cache_creation_input_tokens", 0) or 0
-            cache_read = usage.get("cache_read_input_tokens", 0) or 0
+            # LangChain 把 cache 信息放在 input_token_details 里
+            details = usage.get("input_token_details", {}) or {}
+            cache_creation = details.get("cache_creation", 0) or 0
+            cache_read = details.get("cache_read", 0) or 0
         else:
             input_tokens = getattr(usage, "input_tokens", 0) or 0
             output_tokens = getattr(usage, "output_tokens", 0) or 0
-            cache_creation = getattr(usage, "cache_creation_input_tokens", 0) or 0
-            cache_read = getattr(usage, "cache_read_input_tokens", 0) or 0
+            details = getattr(usage, "input_token_details", None)
+            if details and isinstance(details, dict):
+                cache_creation = details.get("cache_creation", 0) or 0
+                cache_read = details.get("cache_read", 0) or 0
+            else:
+                cache_creation = getattr(details, "cache_creation", 0) or 0 if details else 0
+                cache_read = getattr(details, "cache_read", 0) or 0 if details else 0
 
         if input_tokens > 0 or output_tokens > 0:
             self._current_turn = TokenUsageInfo(

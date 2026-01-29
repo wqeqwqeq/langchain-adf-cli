@@ -166,8 +166,9 @@ class ADFAgent:
         # 加载 ADF 配置
         self.adf_config = adf_config or load_adf_config()
 
-        # 构建 system prompt
-        self.system_prompt = build_system_prompt(self.adf_config)
+        # 构建 system prompt（可选启用 prompt caching）
+        enable_cache = os.getenv("ENABLE_PROMPT_CACHE", "true").lower() in ("1", "true", "yes")
+        self.system_prompt = build_system_prompt(self.adf_config, enable_cache=enable_cache)
 
         # 创建上下文（供 tools 使用）
         self.context = ADFAgentContext(
@@ -235,8 +236,8 @@ class ADFAgent:
         return agent
 
     def get_system_prompt(self) -> str:
-        """获取当前 system prompt"""
-        return self.system_prompt
+        """获取当前 system prompt 文本"""
+        return self.system_prompt.content[0]["text"]
 
     def get_adf_config(self) -> ADFConfig:
         """获取当前 ADF 配置"""

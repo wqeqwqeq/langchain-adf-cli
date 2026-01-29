@@ -4,18 +4,18 @@ ADF Agent System Prompt
 定义 Agent 的行为指导和领域知识。
 """
 
+from langchain_core.messages import SystemMessage
+
 from .context import ADFConfig
 
 
-def build_system_prompt(adf_config: ADFConfig) -> str:
+def build_system_prompt(adf_config: ADFConfig, enable_cache: bool = False) -> SystemMessage:
     """
     构建系统提示
 
     Args:
         adf_config: ADF 配置（用于显示当前配置状态）
-
-    Returns:
-        完整的系统提示字符串
+        enable_cache: 是否启用 prompt caching（添加 cache_control 标记）
     """
     # 配置状态信息
     if adf_config.is_configured():
@@ -45,7 +45,7 @@ When the user requests ADF operations, you MUST:
 
 DO NOT guess or make up resource group or factory names."""
 
-    return f"""You are an Azure Data Factory (ADF) assistant that helps users explore and manage their ADF resources.
+    prompt_text = f"""You are an Azure Data Factory (ADF) assistant that helps users explore and manage their ADF resources.
 
 {config_status}
 
@@ -165,3 +165,8 @@ When showing data, format as tables when appropriate:
 
 Respond in the same language as the user's query. If the user writes in Chinese, respond in Chinese.
 """
+
+    content_block = {"type": "text", "text": prompt_text}
+    if enable_cache:
+        content_block["cache_control"] = {"type": "ephemeral"}
+    return SystemMessage(content=[content_block])
