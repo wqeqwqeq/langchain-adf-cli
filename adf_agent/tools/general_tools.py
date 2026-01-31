@@ -1,7 +1,7 @@
 """
-通用工具定义
+General Tool Definitions
 
-提供文件操作、代码执行等基础工具。
+Provides basic tools for file operations, code execution, etc.
 """
 
 import subprocess
@@ -40,9 +40,9 @@ def read_file(file_path: str, runtime: ToolRuntime[ADFAgentContext]) -> str:
         content = path.read_text(encoding="utf-8")
         lines = content.split("\n")
 
-        # 添加行号
+        # Add line numbers
         numbered_lines = []
-        for i, line in enumerate(lines[:2000], 1):  # 限制行数
+        for i, line in enumerate(lines[:2000], 1):  # Limit line count
             numbered_lines.append(f"{i:4d}| {line}")
 
         if len(lines) > 2000:
@@ -73,7 +73,7 @@ def write_file(file_path: str, content: str, runtime: ToolRuntime[ADFAgentContex
     path = resolve_path(file_path, runtime.context.working_directory)
 
     try:
-        # 确保父目录存在
+        # Ensure parent directory exists
         path.parent.mkdir(parents=True, exist_ok=True)
 
         path.write_text(content, encoding="utf-8")
@@ -99,7 +99,7 @@ def glob(pattern: str, runtime: ToolRuntime[ADFAgentContext]) -> str:
     cwd = runtime.context.working_directory
 
     try:
-        # 使用 Path.glob 进行匹配
+        # Use Path.glob for matching
         matches = sorted(cwd.glob(pattern))
 
         if not matches:
@@ -157,11 +157,11 @@ def grep(pattern: str, path: str, runtime: ToolRuntime[ADFAgentContext]) -> str:
         if search_path.is_file():
             files = [search_path]
         else:
-            # 搜索所有文本文件，排除常见的二进制/隐藏目录
+            # Search all text files, excluding common binary/hidden directories
             files = []
             for p in search_path.rglob("*"):
                 if p.is_file():
-                    # 排除隐藏文件和常见的非代码目录
+                    # Exclude hidden files and common non-code directories
                     parts = p.parts
                     if any(part.startswith(".") or part in ("node_modules", "__pycache__", ".git", "venv", ".venv") for part in parts):
                         continue
@@ -228,11 +228,11 @@ def list_dir(path: str, runtime: ToolRuntime[ADFAgentContext]) -> str:
         entries = sorted(dir_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
 
         result_lines = []
-        for entry in entries[:100]:  # 限制数量
+        for entry in entries[:100]:  # Limit count
             if entry.is_dir():
                 result_lines.append(f"[DIR]  {entry.name}/")
             else:
-                # 显示文件大小
+                # Show file size
                 size = entry.stat().st_size
                 if size < 1024:
                     size_str = f"{size}B"
@@ -257,7 +257,7 @@ _EXEC_RUNTIME_SRC = Path(__file__).with_name("_exec_runtime.py")
 
 
 def _ensure_runtime(session_dir: Path) -> None:
-    """首次调用时将 _exec_runtime.py 部署到 session_dir，后续跳过。"""
+    """Deploy _exec_runtime.py to session_dir on first call, skip on subsequent calls."""
     dest = session_dir / "_exec_runtime.py"
     if not dest.exists():
         dest.write_text(_EXEC_RUNTIME_SRC.read_text(encoding="utf-8"), encoding="utf-8")
@@ -290,7 +290,7 @@ def exec_python(code: str, runtime: ToolRuntime[ADFAgentContext]) -> str:
     """
     session_dir = runtime.context.session_dir
 
-    # 首次调用时把公共 helpers 写入 session_dir
+    # Write shared helpers to session_dir on first call
     _ensure_runtime(session_dir)
 
     setup_code = (
@@ -309,7 +309,7 @@ def exec_python(code: str, runtime: ToolRuntime[ADFAgentContext]) -> str:
             cwd=str(session_dir),
         )
 
-        # 返回详细错误信息，便于 agent 修复
+        # Return detailed error info to help the agent fix issues
         if result.returncode != 0:
             output = f"""[FAILED] Exit code: {result.returncode}
 
@@ -325,7 +325,7 @@ Common fixes:
 - FileNotFoundError: Use list_dir() to see available files
 - SyntaxError: Double-check Python syntax
 """
-            # 保存完整脚本到 session 目录（包含 helper 函数）
+            # Save full script to session directory (including helper functions)
             runtime.context.save_script(full_code, output, success=False)
             return output
 
@@ -396,7 +396,7 @@ def resolve_adf_target(domain: str, environment: str,
     return f"[OK] ADF target set: {new_label}"
 
 
-# 导出所有通用工具
+# Export all general tools
 GENERAL_TOOLS = [
     read_file,
     write_file,

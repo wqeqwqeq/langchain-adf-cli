@@ -1,8 +1,8 @@
 """
-ADF 工具定义
+ADF Tool Definitions
 
-提供 Azure Data Factory 的 Pipeline、Linked Service、Integration Runtime 操作。
-所有工具都将数据写入 workspace/ 目录，避免将大量 JSON 放入上下文。
+Provides Azure Data Factory Pipeline, Linked Service, and Integration Runtime operations.
+All tools write data to the workspace/ directory to avoid placing large JSON into context.
 """
 
 import json
@@ -15,7 +15,7 @@ from .azure_adf_client import ADFClient
 
 
 def require_adf_config(func):
-    """装饰器：检查 ADF 配置是否完整"""
+    """Decorator: check if ADF configuration is complete"""
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         # runtime 是最后一个参数
@@ -32,7 +32,7 @@ def require_adf_config(func):
 
 
 def _get_adf_client(runtime: ToolRuntime[ADFAgentContext]) -> ADFClient:
-    """获取 ADF 客户端实例"""
+    """Get ADF client instance"""
     config = runtime.context.adf_config
     credential = runtime.context.credential
 
@@ -44,7 +44,7 @@ def _get_adf_client(runtime: ToolRuntime[ADFAgentContext]) -> ADFClient:
     )
 
 
-# === Pipeline 工具 ===
+# === Pipeline Tools ===
 
 @tool
 @require_adf_config
@@ -120,7 +120,7 @@ def adf_pipeline_get(name: str, runtime: ToolRuntime[ADFAgentContext]) -> str:
         return f"[FAILED] {str(e)}"
 
 
-# === Linked Service 工具 ===
+# === Linked Service Tools ===
 
 @tool
 @require_adf_config
@@ -199,7 +199,7 @@ def adf_linked_service_test(name: str, runtime: ToolRuntime[ADFAgentContext]) ->
     try:
         client = _get_adf_client(runtime)
 
-        # 执行连接测试
+        # Execute connection test
         result = client.test_linked_service(name)
 
         if result.get("succeeded"):
@@ -225,7 +225,7 @@ Possible causes:
 
     except Exception as e:
         error_str = str(e)
-        # 检查是否是 IR 相关错误
+        # Check if this is an IR-related error
         if "interactive authoring" in error_str.lower() or "integration runtime" in error_str.lower():
             return f"""[FAILED] {error_str}
 
@@ -235,7 +235,7 @@ Try: adf_integration_runtime_enable(name="<ir-name>", minutes=10)
         return f"[FAILED] {str(e)}"
 
 
-# === Dataset 工具 ===
+# === Dataset Tools ===
 
 @tool
 @require_adf_config
@@ -286,7 +286,7 @@ Use exec_python to cross-reference datasets with pipelines.
         return f"[FAILED] {str(e)}"
 
 
-# === Integration Runtime 工具 ===
+# === Integration Runtime Tools ===
 
 @tool
 @require_adf_config
@@ -369,7 +369,7 @@ def adf_integration_runtime_enable(name: str, minutes: int = 10, runtime: ToolRu
     try:
         client = _get_adf_client(runtime)
 
-        # 检查 IR 类型
+        # Check IR type
         ir_type = client.get_integration_runtime_type(name)
         if ir_type != "Managed":
             return f"""[FAILED] Interactive authoring is only supported for Managed Integration Runtimes.
@@ -378,7 +378,7 @@ Integration Runtime '{name}' is of type '{ir_type}'.
 Only 'Managed' type supports interactive authoring.
 """
 
-        # 检查是否已启用
+        # Check if already enabled
         if client.is_interactive_authoring_enabled(name):
             return f"""[OK]
 
@@ -386,7 +386,7 @@ Interactive authoring is already enabled for Integration Runtime '{name}'.
 You can proceed with connection testing.
 """
 
-        # 启用 interactive authoring
+        # Enable interactive authoring
         client.enable_interactive_authoring(name, minutes=minutes)
 
         return f"""[OK]
@@ -408,7 +408,7 @@ You can now:
         return f"[FAILED] {str(e)}"
 
 
-# 导出所有 ADF 工具
+# Export all ADF tools
 ADF_TOOLS = [
     adf_pipeline_list,
     adf_pipeline_get,

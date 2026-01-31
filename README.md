@@ -3,16 +3,16 @@
 A LangChain-based reasoning-action agent for Azure Data Factory. Think of it as a **mini Claude Code, but with ADF tools** — it reasons about your question, picks tools, executes them, inspects results, and iterates until it has an answer.
 
 ```
-$ adf_agent "sales dev 环境里哪些 pipeline 用了 Snowflake？"
+$ uv run adf_agent "Which pipelines in sales dev use Snowflake?"
 
   💭 Thinking...
   🔧 resolve_adf_target("sales", "dev")         → OK
-  🔧 adf_pipeline_list()                        → 42 pipelines saved
+  🔧 adf_pipeline_list()                        → 242 pipelines saved
   🔧 adf_linked_service_list()                  → 18 linked services
   🔧 adf_dataset_list()                         → 65 datasets saved
-  🔧 exec_python(cross_reference_script)         → 7 pipelines matched
+  🔧 exec_python(cross_reference_script)         → 20 pipelines matched
 
-  Found 7 pipelines using Snowflake linked services:
+  Found 20 pipelines using Snowflake linked services:
   | Pipeline         | Linked Service      |
   |------------------|---------------------|
   | daily_load       | snowflake_prod_ls   |

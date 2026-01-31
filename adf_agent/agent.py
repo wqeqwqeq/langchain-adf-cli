@@ -1,10 +1,10 @@
 """
-ADF Agent 主体
+ADF Agent Core
 
-使用 LangChain 1.0 的 create_agent API 实现 ADF Agent，支持：
-- Extended Thinking 显示模型思考过程
-- 事件级流式输出 (thinking / text / tool_call / tool_result)
-- Azure Data Factory 操作
+ADF Agent implementation using LangChain 1.0 create_agent API, supporting:
+- Extended Thinking to display model reasoning process
+- Event-level streaming output (thinking / text / tool_call / tool_result)
+- Azure Data Factory operations
 """
 
 import os
@@ -23,38 +23,38 @@ from .prompts import build_system_prompt
 from .stream import StreamEventEmitter, ToolCallTracker, TokenTracker, is_success, DisplayLimits
 
 
-# 加载环境变量（override=True 确保 .env 文件覆盖系统环境变量）
+# Load environment variables (override=True ensures .env overrides system env vars)
 load_dotenv(override=True)
 
 
-# 默认配置
+# Default configuration
 DEFAULT_MODEL = "claude-sonnet-4-5-20250929"
 DEFAULT_MAX_TOKENS = 16000
-DEFAULT_TEMPERATURE = 1.0  # Extended Thinking 要求温度为 1.0
+DEFAULT_TEMPERATURE = 1.0  # Extended Thinking requires temperature = 1.0
 DEFAULT_THINKING_BUDGET = 10000
 
 
 def get_claude_config() -> dict:
     """
-    获取 Claude 配置，支持多种 provider
+    Get Claude configuration, supporting multiple providers
 
-    支持的 provider：
-    - anthropic (默认): 直接使用 Anthropic API
-    - azure_foundry: 使用 Azure AI Foundry
+    Supported providers:
+    - anthropic (default): Direct Anthropic API
+    - azure_foundry: Azure AI Foundry
 
-    环境变量：
-    - CLAUDE_PROVIDER: 选择 provider (anthropic 或 azure_foundry)
+    Environment variables:
+    - CLAUDE_PROVIDER: Select provider (anthropic or azure_foundry)
 
-    Anthropic (默认):
-    - ANTHROPIC_API_KEY 或 ANTHROPIC_AUTH_TOKEN
-    - ANTHROPIC_BASE_URL (可选)
+    Anthropic (default):
+    - ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN
+    - ANTHROPIC_BASE_URL (optional)
 
     Azure AI Foundry:
     - ANTHROPIC_FOUNDRY_API_KEY
     - ANTHROPIC_FOUNDRY_BASE_URL
 
     Returns:
-        包含 model_class 和 init_kwargs 的配置字典
+        Dict containing model_class and init_kwargs
     """
     provider = os.getenv("CLAUDE_PROVIDER", "anthropic").lower()
 
@@ -80,14 +80,14 @@ def get_claude_config() -> dict:
 
 def get_anthropic_credentials() -> tuple[str | None, str | None]:
     """
-    获取 Anthropic API 认证信息
+    Get Anthropic API credentials
 
-    支持多种认证方式：
-    1. ANTHROPIC_API_KEY - 标准 API Key
-    2. ANTHROPIC_AUTH_TOKEN - 第三方代理认证 Token
+    Supports multiple authentication methods:
+    1. ANTHROPIC_API_KEY - Standard API Key
+    2. ANTHROPIC_AUTH_TOKEN - Third-party proxy auth token
 
     Returns:
-        (api_key, base_url) 元组
+        (api_key, base_url) tuple
     """
     api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")
     base_url = os.getenv("ANTHROPIC_BASE_URL")
@@ -95,7 +95,7 @@ def get_anthropic_credentials() -> tuple[str | None, str | None]:
 
 
 def check_api_credentials() -> bool:
-    """检查是否配置了 API 认证"""
+    """Check if API credentials are configured"""
     config = get_claude_config()
     api_key = config["init_kwargs"].get("api_key")
     return api_key is not None
@@ -103,9 +103,9 @@ def check_api_credentials() -> bool:
 
 def load_adf_config() -> ADFConfig:
     """
-    从环境变量加载 ADF 配置
+    Load ADF configuration from environment variables
 
-    配置可能不完整，Agent 会在需要时询问用户。
+    Configuration may be incomplete; the Agent will ask the user when needed.
     """
     return ADFConfig(
         resource_group=os.getenv("ADF_RESOURCE_GROUP"),
@@ -116,16 +116,16 @@ def load_adf_config() -> ADFConfig:
 
 class ADFAgent:
     """
-    ADF Agent - Azure Data Factory 助手
+    ADF Agent - Azure Data Factory Assistant
 
-    使用示例：
+    Usage:
         agent = ADFAgent()
 
-        # 查看 system prompt
+        # View system prompt
         print(agent.get_system_prompt())
 
-        # 运行 agent
-        for event in agent.stream_events("列出所有 pipeline"):
+        # Run agent
+        for event in agent.stream_events("List all pipelines"):
             print(event)
     """
 
@@ -141,97 +141,97 @@ class ADFAgent:
         skill_paths: Optional[list[Path]] = None,
     ):
         """
-        初始化 Agent
+        Initialize the Agent
 
         Args:
-            model: 模型名称，默认 claude-sonnet-4-5-20250929
-            working_directory: 工作目录
-            max_tokens: 最大 tokens
-            temperature: 温度参数 (启用 thinking 时强制为 1.0)
-            enable_thinking: 是否启用 Extended Thinking
-            thinking_budget: thinking 的 token 预算
-            adf_config: ADF 配置，如果未提供则从环境变量加载
-            skill_paths: Skills 搜索路径列表，默认为 .claude/skills/ 和 ~/.claude/skills/
+            model: Model name, defaults to claude-sonnet-4-5-20250929
+            working_directory: Working directory
+            max_tokens: Maximum tokens
+            temperature: Temperature parameter (forced to 1.0 when thinking is enabled)
+            enable_thinking: Whether to enable Extended Thinking
+            thinking_budget: Token budget for thinking
+            adf_config: ADF configuration; loaded from env vars if not provided
+            skill_paths: Skills search path list, defaults to .claude/skills/ and ~/.claude/skills/
         """
-        # thinking 配置
+        # Thinking configuration
         self.enable_thinking = enable_thinking
         self.thinking_budget = thinking_budget
 
-        # 配置 (启用 thinking 时温度必须为 1.0)
+        # Configuration (temperature must be 1.0 when thinking is enabled)
         self.model_name = model or os.getenv("CLAUDE_MODEL", DEFAULT_MODEL)
         self.max_tokens = max_tokens or int(os.getenv("MAX_TOKENS", str(DEFAULT_MAX_TOKENS)))
         if enable_thinking:
-            self.temperature = 1.0  # Anthropic 要求启用 thinking 时温度为 1.0
+            self.temperature = 1.0  # Anthropic requires temperature = 1.0 when thinking is enabled
         else:
             self.temperature = temperature or float(os.getenv("MODEL_TEMPERATURE", str(DEFAULT_TEMPERATURE)))
         self.working_directory = working_directory or Path.cwd()
 
-        # 加载 ADF 配置
+        # Load ADF configuration
         self.adf_config = adf_config or ADFConfig()
 
-        # 初始化 Skills 加载器
+        # Initialize Skills loader
         self.skill_loader = SkillLoader(skill_paths)
         skills = self.skill_loader.scan_skills()
 
-        # 构建 system prompt
+        # Build system prompt
         self.system_prompt = build_system_prompt(skills=skills)
 
-        # 创建上下文（供 tools 使用）
+        # Create context (used by tools)
         self.context = ADFAgentContext(
             working_directory=self.working_directory,
             adf_config=self.adf_config,
             skill_loader=self.skill_loader,
         )
 
-        # 创建 LangChain Agent
+        # Create LangChain Agent
         self.agent = self._create_agent()
 
     def _create_agent(self):
         """
-        创建 LangChain Agent
+        Create LangChain Agent
 
-        使用 LangChain 1.0 的 create_agent API:
-        - model: 可以是字符串 ID 或 model 实例
-        - tools: 工具列表
-        - system_prompt: 系统提示
-        - context_schema: 上下文类型（供 ToolRuntime 使用）
-        - checkpointer: 会话记忆
+        Uses LangChain 1.0 create_agent API:
+        - model: Can be a string ID or model instance
+        - tools: List of tools
+        - system_prompt: System prompt
+        - context_schema: Context type (used by ToolRuntime)
+        - checkpointer: Session memory
 
-        支持多种 provider:
-        - anthropic (默认): 使用 init_chat_model
-        - azure_foundry: 使用 ChatAzureFoundryClaude 直接实例化
+        Supports multiple providers:
+        - anthropic (default): Uses init_chat_model
+        - azure_foundry: Uses ChatAzureFoundryClaude directly
         """
-        # 获取 provider 配置
+        # Get provider configuration
         config = get_claude_config()
         model_class = config["model_class"]
         provider_kwargs = config["init_kwargs"]
 
-        # 构建初始化参数
+        # Build initialization parameters
         init_kwargs = {
             "model": self.model_name,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
 
-        # 添加认证参数
+        # Add authentication parameters
         if provider_kwargs.get("api_key"):
             init_kwargs["api_key"] = provider_kwargs["api_key"]
         if provider_kwargs.get("base_url"):
             init_kwargs["base_url"] = provider_kwargs["base_url"]
 
-        # Extended Thinking 配置
+        # Extended Thinking configuration
         if self.enable_thinking:
             init_kwargs["thinking"] = {
                 "type": "enabled",
                 "budget_tokens": self.thinking_budget,
             }
 
-        # 初始化模型
-        # 对于 azure_foundry，直接使用 model_class 实例化
-        # 对于 anthropic，也直接使用 ChatAnthropic 实例化（保持一致性）
+        # Initialize model
+        # For azure_foundry, instantiate directly with model_class
+        # For anthropic, also instantiate directly with ChatAnthropic (for consistency)
         model = model_class(**init_kwargs)
 
-        # 创建 Agent
+        # Create Agent
         agent = create_agent(
             model=model,
             tools=ALL_TOOLS,
@@ -243,23 +243,23 @@ class ADFAgent:
         return agent
 
     def get_system_prompt(self) -> str:
-        """获取当前 system prompt 文本"""
+        """Get the current system prompt text"""
         return self.system_prompt.content[0]["text"]
 
     def get_adf_config(self) -> ADFConfig:
-        """获取当前 ADF 配置"""
+        """Get the current ADF configuration"""
         return self.adf_config
 
     def invoke(self, message: str, thread_id: str = "default") -> dict:
         """
-        同步调用 Agent
+        Synchronous Agent invocation
 
         Args:
-            message: 用户消息
-            thread_id: 会话 ID（用于多轮对话）
+            message: User message
+            thread_id: Session ID (for multi-turn conversations)
 
         Returns:
-            Agent 响应
+            Agent response
         """
         config = {"configurable": {"thread_id": thread_id}}
 
@@ -273,14 +273,14 @@ class ADFAgent:
 
     def stream(self, message: str, thread_id: str = "default") -> Iterator[dict]:
         """
-        流式调用 Agent (state 级别)
+        Streaming Agent invocation (state level)
 
         Args:
-            message: 用户消息
-            thread_id: 会话 ID
+            message: User message
+            thread_id: Session ID
 
         Yields:
-            流式响应块 (完整状态更新)
+            Streaming response chunks (full state updates)
         """
         config = {"configurable": {"thread_id": thread_id}}
 
@@ -294,19 +294,19 @@ class ADFAgent:
 
     def stream_events(self, message: str, thread_id: str = "default") -> Iterator[dict]:
         """
-        事件级流式输出，支持 thinking 和 token 级流式
+        Event-level streaming output, supporting thinking and token-level streaming
 
         Args:
-            message: 用户消息
-            thread_id: 会话 ID
+            message: User message
+            thread_id: Session ID
 
         Yields:
-            事件字典，格式如下:
-            - {"type": "thinking", "content": "..."} - 思考内容片段
-            - {"type": "text", "content": "..."} - 响应文本片段
-            - {"type": "tool_call", "name": "...", "args": {...}} - 工具调用
-            - {"type": "tool_result", "name": "...", "content": "...", "success": bool} - 工具结果
-            - {"type": "done", "response": "..."} - 完成标记，包含完整响应
+            Event dicts in the following format:
+            - {"type": "thinking", "content": "..."} - Thinking content fragment
+            - {"type": "text", "content": "..."} - Response text fragment
+            - {"type": "tool_call", "name": "...", "args": {...}} - Tool call
+            - {"type": "tool_result", "name": "...", "content": "...", "success": bool} - Tool result
+            - {"type": "done", "response": "..."} - Completion marker with full response
         """
         config = {"configurable": {"thread_id": thread_id}}
         emitter = StreamEventEmitter()
@@ -316,16 +316,16 @@ class ADFAgent:
         full_response = ""
         debug = os.getenv("ADF_DEBUG", "").lower() in ("1", "true", "yes")
 
-        # Parallel tool call 检测：
-        # 一次 API 调用可能返回多个 tool_call（并行执行），
-        # 但 usage_metadata 只出现一次。我们把 token_usage 延迟到
-        # 该批次的最后一个 tool_result 之后再发送。
+        # Parallel tool call detection:
+        # A single API call may return multiple tool_calls (parallel execution),
+        # but usage_metadata only appears once. We defer sending token_usage
+        # until after the last tool_result in the batch.
         from .stream.token_tracker import TokenUsageInfo
         pending_turn_usage: TokenUsageInfo | None = None
         parallel_count = 0
 
         def _emit_pending():
-            """发送缓冲的 per-turn token_usage（上一批次的）"""
+            """Send buffered per-turn token_usage (from previous batch)"""
             nonlocal pending_turn_usage, parallel_count
             if pending_turn_usage is not None and not pending_turn_usage.is_empty():
                 ev = emitter.token_usage(
@@ -344,7 +344,7 @@ class ADFAgent:
             parallel_count = 0
             return None
 
-        # 使用 messages 模式获取 token 级流式
+        # Use messages mode for token-level streaming
         try:
             for event in self.agent.stream(
                 {"messages": [{"role": "user", "content": message}]},
@@ -352,7 +352,7 @@ class ADFAgent:
                 context=self.context,
                 stream_mode="messages",
             ):
-                # event 可能是 tuple(message, metadata) 或直接 message
+                # event may be tuple(message, metadata) or a direct message
                 if isinstance(event, tuple) and len(event) >= 2:
                     chunk = event[0]
                 else:
@@ -362,17 +362,17 @@ class ADFAgent:
                     chunk_type = type(chunk).__name__
                     print(f"[DEBUG] Event: {chunk_type}")
 
-                # 处理 AIMessageChunk / AIMessage
+                # Handle AIMessageChunk / AIMessage
                 if isinstance(chunk, (AIMessageChunk, AIMessage)):
-                    # 新的 API 调用开始 → 发送上一批次缓冲的 token_usage
+                    # New API call started -> send buffered token_usage from previous batch
                     pending_ev = _emit_pending()
                     if pending_ev:
                         yield pending_ev
 
-                    # 更新 token 统计
+                    # Update token statistics
                     token_tracker.update(chunk)
 
-                    # 处理 content
+                    # Process content
                     for ev in self._process_chunk_content(chunk, emitter, tracker):
                         if ev.type == "text":
                             full_response += ev.data.get("content", "")
@@ -380,14 +380,14 @@ class ADFAgent:
                             print(f"[DEBUG] Yielding: {ev.type}")
                         yield ev.data
 
-                    # 处理 tool_calls (有些情况下在 chunk.tool_calls 中)
+                    # Handle tool_calls (sometimes in chunk.tool_calls)
                     if hasattr(chunk, "tool_calls") and chunk.tool_calls:
                         for ev in self._process_tool_calls(chunk.tool_calls, emitter, tracker):
                             if debug:
                                 print(f"[DEBUG] Yielding from tool_calls: {ev.type}")
                             yield ev.data
 
-                # 处理 ToolMessage (工具执行结果)
+                # Handle ToolMessage (tool execution result)
                 elif hasattr(chunk, "type") and chunk.type == "tool":
                     turn_usage = token_tracker.finalize_turn()
 
@@ -395,19 +395,19 @@ class ADFAgent:
                         tool_name = getattr(chunk, "name", "unknown")
                         print(f"[DEBUG] Processing tool result: {tool_name}")
 
-                    # 处理工具结果
+                    # Process tool result
                     for ev in self._process_tool_result(chunk, emitter, tracker):
                         if debug:
                             print(f"[DEBUG] Yielding: {ev.type}")
                         yield ev.data
 
-                    # 缓冲 token_usage，等批次结束再发送
+                    # Buffer token_usage, send when batch ends
                     if turn_usage and not turn_usage.is_empty():
-                        # 该批次第一个 tool（有 usage 数据）
+                        # First tool in batch (has usage data)
                         pending_turn_usage = turn_usage
                         parallel_count = 1
                     elif pending_turn_usage is not None:
-                        # 同一批次的后续 parallel tool（finalize 返回 None）
+                        # Subsequent parallel tool in same batch (finalize returns None)
                         parallel_count += 1
 
             if debug:
@@ -418,16 +418,16 @@ class ADFAgent:
                 import traceback
                 print(f"[DEBUG] Stream error: {e}")
                 traceback.print_exc()
-            # 发送错误事件让用户知道发生了什么
+            # Send error event to notify the user
             yield emitter.error(str(e)).data
             raise
 
-        # 发送上一批次缓冲的 per-turn token_usage
+        # Send buffered per-turn token_usage from previous batch
         pending_ev = _emit_pending()
         if pending_ev:
             yield pending_ev
 
-        # 最后一个 turn（最终回复，没有 tool_result 触发 finalize）
+        # Last turn (final reply, no tool_result to trigger finalize)
         last_turn = token_tracker.finalize_turn()
         if last_turn and not last_turn.is_empty():
             yield emitter.token_usage(
@@ -440,7 +440,7 @@ class ADFAgent:
                 parallel_count=1,
             ).data
 
-        # 发送汇总 token 使用量（所有 turn 的 SUM）
+        # Send aggregate token usage (SUM of all turns)
         usage = token_tracker.get_usage()
         if not usage.is_empty():
             yield emitter.token_usage(
@@ -452,11 +452,11 @@ class ADFAgent:
                 is_total=True,
             ).data
 
-        # 发送完成事件
+        # Send completion event
         yield emitter.done(full_response).data
 
     def _process_chunk_content(self, chunk, emitter: StreamEventEmitter, tracker: ToolCallTracker):
-        """处理 chunk 的 content"""
+        """Process chunk content"""
         content = chunk.content
 
         if isinstance(content, str):
@@ -509,13 +509,13 @@ class ADFAgent:
 
                 if tool_id:
                     tracker.update(tool_id, name=name, args=args_payload)
-                    # 立即发送（显示"执行中"状态），参数可能尚不完整
+                    # Send immediately (show "running" status), args may be incomplete
                     if tracker.is_ready(tool_id):
                         tracker.mark_emitted(tool_id)
                         yield emitter.tool_call(name, args_payload, tool_id)
 
             elif block_type == "input_json_delta":
-                # 累积 JSON 片段（args 分批到达）
+                # Accumulate JSON fragments (args arrive in batches)
                 partial_json = block.get("partial_json", "")
                 if partial_json:
                     tracker.append_json_delta(partial_json, block.get("index", 0))
@@ -530,7 +530,7 @@ class ADFAgent:
                     tracker.append_json_delta(partial_args, block.get("index", 0))
 
     def _process_tool_calls(self, tool_calls: list, emitter: StreamEventEmitter, tracker: ToolCallTracker):
-        """处理 chunk.tool_calls - 立即发送 tool_call 事件"""
+        """Process chunk.tool_calls - send tool_call events immediately"""
         for tc in tool_calls:
             tool_id = tc.get("id", "")
             if tool_id:
@@ -544,35 +544,35 @@ class ADFAgent:
                     yield emitter.tool_call(name, args_payload, tool_id)
 
     def _process_tool_result(self, chunk, emitter: StreamEventEmitter, tracker: ToolCallTracker):
-        """处理工具结果"""
-        # 最终化：解析累积的 JSON 片段为 args
+        """Process tool result"""
+        # Finalize: parse accumulated JSON fragments into args
         tracker.finalize_all()
 
-        # 发送所有工具调用的更新（参数现在是完整的）
+        # Send updates for all tool calls (args are now complete)
         for info in tracker.get_all():
             yield emitter.tool_call(info.name, info.args, info.id)
 
-        # 发送结果
+        # Send result
         name = getattr(chunk, "name", "unknown")
         raw_content = str(getattr(chunk, "content", ""))
         content = raw_content[:DisplayLimits.TOOL_RESULT_MAX]
         if len(raw_content) > DisplayLimits.TOOL_RESULT_MAX:
             content += "\n... (truncated)"
 
-        # 基于内容判断是否成功
+        # Determine success based on content
         success = is_success(content)
 
         yield emitter.tool_result(name, content, success)
 
     def get_last_response(self, result: dict) -> str:
         """
-        从结果中提取最后的 AI 响应文本
+        Extract the last AI response text from the result
 
         Args:
-            result: invoke 或 stream 的结果
+            result: Result from invoke or stream
 
         Returns:
-            AI 响应文本
+            AI response text
         """
         messages = result.get("messages", [])
         for msg in reversed(messages):
@@ -580,7 +580,7 @@ class ADFAgent:
                 if isinstance(msg.content, str):
                     return msg.content
                 elif isinstance(msg.content, list):
-                    # 处理多部分内容
+                    # Handle multi-part content
                     text_parts = []
                     for part in msg.content:
                         if isinstance(part, dict) and part.get("type") == "text":
@@ -599,17 +599,17 @@ def create_adf_agent(
     skill_paths: Optional[list[Path]] = None,
 ) -> ADFAgent:
     """
-    便捷函数：创建 ADF Agent
+    Convenience function: Create an ADF Agent
 
     Args:
-        model: 模型名称
-        working_directory: 工作目录
-        enable_thinking: 是否启用 Extended Thinking
-        thinking_budget: thinking 的 token 预算
-        skill_paths: Skills 搜索路径列表
+        model: Model name
+        working_directory: Working directory
+        enable_thinking: Whether to enable Extended Thinking
+        thinking_budget: Token budget for thinking
+        skill_paths: Skills search path list
 
     Returns:
-        配置好的 ADFAgent 实例
+        Configured ADFAgent instance
     """
     return ADFAgent(
         model=model,

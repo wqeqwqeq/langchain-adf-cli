@@ -1,7 +1,7 @@
 """
 ADF Agent System Prompt
 
-定义 Agent 的行为指导和领域知识。
+Defines the Agent's behavioral guidelines and domain knowledge.
 """
 
 from __future__ import annotations
@@ -14,13 +14,13 @@ from .skill_loader import SkillMetadata
 
 def build_skills_section(skills: list[SkillMetadata]) -> str:
     """
-    构建 Skills 目录文本
+    Build the Skills directory text
 
     Args:
-        skills: Skills 元数据列表
+        skills: List of Skills metadata
 
     Returns:
-        Skills 目录文本，用于注入 system prompt
+        Skills directory text for injection into the system prompt
     """
     section = "## Available Skills\n\n"
     section += "You have access to the following specialized skills:\n\n"
@@ -40,12 +40,12 @@ def build_system_prompt(
     skills: list[SkillMetadata] | None = None,
 ) -> SystemMessage:
     """
-    构建系统提示
+    Build the system prompt
 
     Args:
-        skills: Skills 元数据列表（可选，用于注入 skills 目录）
+        skills: List of Skills metadata (optional, for injecting the skills directory)
     """
-    # 动态生成 target 列表
+    # Dynamically generate target list
     target_lines = "\n".join(
         f"- **{domain}**: {', '.join(envs.keys())}"
         for domain, envs in ADF_TARGETS.items()

@@ -1,7 +1,7 @@
 """
-ToolCallTracker - 工具调用追踪器
+ToolCallTracker - Tool call tracker
 
-管理流式传输中的工具调用状态，处理增量到达的参数。
+Manages tool call state during streaming, handling incrementally arriving arguments.
 """
 
 import json
@@ -11,43 +11,43 @@ from typing import Dict, Optional
 
 @dataclass
 class ToolCallInfo:
-    """工具调用信息"""
+    """Tool call information"""
     id: str
     name: str
     args: Dict = field(default_factory=dict)
     emitted: bool = False
-    args_complete: bool = False  # 参数是否完整（区分"无参数"和"参数待到达"）
-    # 用于累积 input_json_delta 片段
+    args_complete: bool = False  # Whether args are complete (distinguish "no args" from "args pending")
+    # Buffer for accumulating input_json_delta fragments
     _json_buffer: str = ""
 
 
 class ToolCallTracker:
-    """工具调用追踪器
+    """Tool call tracker
 
-    处理 LangChain 流式输出中 tool_use 块的增量到达问题。
-    支持 input_json_delta 类型的增量 JSON 片段累积。
+    Handles the incremental arrival of tool_use blocks in LangChain streaming output.
+    Supports accumulation of input_json_delta type incremental JSON fragments.
 
-    使用示例：
+    Usage example:
         tracker = ToolCallTracker()
 
-        # 注册工具调用（可能分多次到达）
+        # Register tool call (may arrive in multiple chunks)
         tracker.update(tool_id, name="bash")
 
-        # 累积 JSON 片段
+        # Accumulate JSON fragments
         tracker.append_json_delta(tool_id, '{"command')
         tracker.append_json_delta(tool_id, '": "ls"}')
 
-        # 最终化：解析累积的 JSON
+        # Finalize: parse accumulated JSON
         tracker.finalize(tool_id)
 
-        # 发送
+        # Emit
         info = tracker.get(tool_id)
         yield emitter.tool_call(info.name, info.args)
     """
 
     def __init__(self):
         self._calls: Dict[str, ToolCallInfo] = {}
-        # 记录最后一个 tool_id（用于 input_json_delta 没有 id 的情况）
+        # Track the last tool_id (for input_json_delta which lacks an id)
         self._last_tool_id: Optional[str] = None
 
     def update(
@@ -57,13 +57,13 @@ class ToolCallTracker:
         args: Optional[Dict] = None,
         args_complete: bool = False,
     ) -> None:
-        """更新工具调用信息（累积式）
+        """Update tool call information (accumulative)
 
         Args:
-            tool_id: 工具调用 ID
-            name: 工具名称
-            args: 工具参数
-            args_complete: 参数是否完整。区分"参数为空字典"和"参数将通过 delta 到达"
+            tool_id: Tool call ID
+            name: Tool name
+            args: Tool arguments
+            args_complete: Whether args are complete. Distinguishes "args is empty dict" from "args will arrive via delta"
         """
         if tool_id not in self._calls:
             self._calls[tool_id] = ToolCallInfo(
@@ -79,64 +79,64 @@ class ToolCallTracker:
                 info.name = name
             if args:
                 info.args = args
-            # 只有传入 True 时才更新为 True（避免后续调用意外重置）
+            # Only update to True when True is passed (avoid accidental reset by subsequent calls)
             if args_complete:
                 info.args_complete = True
 
     def append_json_delta(self, partial_json: str, index: int = 0) -> None:
-        """累积 input_json_delta 片段
+        """Accumulate input_json_delta fragments
 
-        LangChain 流式传输中，args 可能以 input_json_delta 形式分批到达。
-        index 用于处理并行工具调用的情况。
+        In LangChain streaming, args may arrive as input_json_delta in batches.
+        index is used to handle parallel tool call scenarios.
         """
-        # 使用 last_tool_id（因为 input_json_delta 没有 tool_id）
+        # Use last_tool_id (since input_json_delta has no tool_id)
         tool_id = self._last_tool_id
         if tool_id and tool_id in self._calls:
             self._calls[tool_id]._json_buffer += partial_json
 
     def finalize_all(self) -> None:
-        """最终化所有工具调用：解析累积的 JSON 片段并标记参数完整"""
+        """Finalize all tool calls: parse accumulated JSON fragments and mark args as complete"""
         for info in self._calls.values():
             if info._json_buffer:
                 try:
                     info.args = json.loads(info._json_buffer)
                 except json.JSONDecodeError:
-                    pass  # 保持原有 args
+                    pass  # Keep existing args
                 info._json_buffer = ""
-            # finalize 时标记所有工具参数完整
+            # Mark all tool args as complete during finalize
             info.args_complete = True
 
     def is_ready(self, tool_id: str) -> bool:
-        """检查工具调用是否准备好发送（有 name 且未发送即可）"""
+        """Check if tool call is ready to emit (has name and not yet emitted)"""
         if tool_id not in self._calls:
             return False
         info = self._calls[tool_id]
         return bool(info.name) and not info.emitted
 
     def get_all(self) -> list[ToolCallInfo]:
-        """获取所有工具调用（包括已发送的）"""
+        """Get all tool calls (including emitted ones)"""
         return list(self._calls.values())
 
     def mark_emitted(self, tool_id: str) -> None:
-        """标记已发送"""
+        """Mark as emitted"""
         if tool_id in self._calls:
             self._calls[tool_id].emitted = True
 
     def get(self, tool_id: str) -> Optional[ToolCallInfo]:
-        """获取工具调用信息"""
+        """Get tool call information"""
         return self._calls.get(tool_id)
 
     def get_pending(self) -> list[ToolCallInfo]:
-        """获取所有未发送的工具调用"""
+        """Get all pending (not yet emitted) tool calls"""
         return [info for info in self._calls.values() if not info.emitted]
 
     def emit_all_pending(self) -> list[ToolCallInfo]:
-        """发送所有待处理的工具调用并标记"""
+        """Emit all pending tool calls and mark them"""
         pending = self.get_pending()
         for info in pending:
             info.emitted = True
         return pending
 
     def clear(self) -> None:
-        """清空追踪器"""
+        """Clear the tracker"""
         self._calls.clear()

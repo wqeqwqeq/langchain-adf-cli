@@ -1,12 +1,12 @@
 """
-Stream 子模块 - 流式事件处理
+Stream submodule - Streaming event processing
 
-提供:
-- StreamEventEmitter: 事件发射器
-- ToolCallTracker: 工具调用追踪器
-- ToolResultFormatter: 工具结果格式化器
-- 工具函数: has_args, is_success, resolve_path, truncate, get_status_symbol
-- 常量: SUCCESS_PREFIX, FAILURE_PREFIX, DisplayLimits
+Provides:
+- StreamEventEmitter: Event emitter
+- ToolCallTracker: Tool call tracker
+- ToolResultFormatter: Tool result formatter
+- Utility functions: has_args, is_success, resolve_path, truncate, get_status_symbol
+- Constants: SUCCESS_PREFIX, FAILURE_PREFIX, DisplayLimits
 """
 
 from .emitter import StreamEventEmitter, StreamEvent

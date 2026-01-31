@@ -1,8 +1,8 @@
 """
-exec_python 运行时 helpers。
+exec_python runtime helpers.
 
-被 exec_python 通过 subprocess 导入，提供常用的数据处理工具函数。
-用户代码可直接使用这些函数，无需重复定义。
+Imported by exec_python via subprocess, providing common data processing utility functions.
+User code can use these functions directly without redefining them.
 """
 
 import json  # noqa: F401
@@ -12,20 +12,20 @@ from collections import Counter, defaultdict  # noqa: F401
 from pathlib import Path
 
 __all__ = [
-    # 常用标准库（用户代码直接可用）
+    # Common standard libraries (directly available to user code)
     "json", "re", "sys", "Path", "Counter", "defaultdict",
-    # 运行时变量
+    # Runtime variables
     "session_dir",
-    # helper 函数
+    # Helper functions
     "_init", "load_json", "save_json", "pretty_print",
 ]
 
-# 由 _init() 设置
+# Set by _init()
 session_dir: Path = Path(".")
 
 
 def _init(sd: str) -> None:
-    """初始化 session_dir（由 exec_python 自动调用，cwd 已由 subprocess 设置）"""
+    """Initialize session_dir (called automatically by exec_python, cwd is set by subprocess)"""
     global session_dir
     session_dir = Path(sd)
 

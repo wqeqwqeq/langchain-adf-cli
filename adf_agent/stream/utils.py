@@ -1,7 +1,7 @@
 """
-Stream 工具函数和常量
+Stream utility functions and constants
 
-提供统一的辅助函数和常量定义。
+Provides unified helper functions and constant definitions.
 """
 
 import sys
@@ -9,34 +9,34 @@ from pathlib import Path, PurePath
 from enum import Enum
 
 
-# === 状态标记常量 ===
+# === Status prefix constants ===
 SUCCESS_PREFIX = "[OK]"
 FAILURE_PREFIX = "[FAILED]"
 
 
-# === 工具状态指示器 ===
+# === Tool status indicators ===
 class ToolStatus(str, Enum):
-    """工具执行状态指示器（Claude Code 风格）"""
-    RUNNING = "●"   # 执行中 - 黄色
-    SUCCESS = "●"   # 成功 - 绿色
-    ERROR = "●"     # 失败 - 红色
-    PENDING = "○"   # 等待 - 灰色
+    """Tool execution status indicators (Claude Code style)"""
+    RUNNING = "●"   # Running - yellow
+    SUCCESS = "●"   # Success - green
+    ERROR = "●"     # Error - red
+    PENDING = "○"   # Pending - gray
 
 
 def get_status_symbol(status: ToolStatus) -> str:
     """
-    获取状态符号，Windows cmd.exe 使用 ASCII 备选
+    Get status symbol, with ASCII fallback for Windows cmd.exe
 
-    在不支持 Unicode 的终端（如 Windows cmd.exe）上，
-    圆点符号可能显示为方框，因此提供 ASCII 备选方案。
+    On terminals that don't support Unicode (e.g. Windows cmd.exe),
+    dot symbols may render as boxes, so ASCII fallbacks are provided.
 
     Args:
-        status: 工具状态
+        status: Tool status
 
     Returns:
-        状态符号（Unicode 或 ASCII）
+        Status symbol (Unicode or ASCII)
     """
-    # 检测是否支持 Unicode
+    # Check Unicode support
     try:
         supports_unicode = (
             sys.stdout.encoding
@@ -48,7 +48,7 @@ def get_status_symbol(status: ToolStatus) -> str:
     if supports_unicode:
         return status.value
 
-    # ASCII 备选
+    # ASCII fallback
     fallback = {
         ToolStatus.RUNNING: "*",
         ToolStatus.SUCCESS: "+",
@@ -58,52 +58,52 @@ def get_status_symbol(status: ToolStatus) -> str:
     return fallback.get(status, "?")
 
 
-# === 显示限制常量 ===
+# === Display limit constants ===
 class DisplayLimits:
-    """显示相关的长度限制"""
-    THINKING_STREAM = 1000      # 流式显示时的 thinking 长度
-    THINKING_FINAL = 2000       # 最终显示时的 thinking 长度
-    ARGS_INLINE = 100           # 内联显示的参数长度
-    ARGS_FORMATTED = 300        # 格式化显示的参数长度
-    TOOL_RESULT_STREAM = 500    # 流式显示时的工具结果长度
-    TOOL_RESULT_FINAL = 800     # 最终显示时的工具结果长度
-    TOOL_RESULT_MAX = 2000      # 工具结果最大长度
+    """Display-related length limits"""
+    THINKING_STREAM = 1000      # Thinking length during streaming
+    THINKING_FINAL = 2000       # Thinking length for final display
+    ARGS_INLINE = 100           # Args length for inline display
+    ARGS_FORMATTED = 300        # Args length for formatted display
+    TOOL_RESULT_STREAM = 500    # Tool result length during streaming
+    TOOL_RESULT_FINAL = 800     # Tool result length for final display
+    TOOL_RESULT_MAX = 2000      # Maximum tool result length
 
 
 def has_args(args) -> bool:
     """
-    检查 args 是否有内容
+    Check if args has content
 
-    修复空字典 falsy 问题：空字典 {} 在 Python 中是 falsy，
-    但对于工具调用来说，空字典表示无参数，是合法的。
+    Fixes empty dict falsy issue: empty dict {} is falsy in Python,
+    but for tool calls, an empty dict means no arguments, which is valid.
 
     Args:
-        args: 工具参数，可能是 None、{} 或包含参数的字典
+        args: Tool arguments, may be None, {} or a dict with arguments
 
     Returns:
-        True 如果 args 有实际内容（非 None 且非空字典）
+        True if args has actual content (not None and not empty dict)
     """
     return args is not None and args != {}
 
 
 def is_success(content: str) -> bool:
     """
-    判断工具输出是否表示成功执行
+    Determine whether tool output indicates successful execution
 
-    基于 [OK]/[FAILED] 前缀判断。
+    Based on [OK]/[FAILED] prefix detection.
 
     Args:
-        content: 工具输出内容
+        content: Tool output content
 
     Returns:
-        True 如果成功执行
+        True if execution was successful
     """
     content = content.strip()
     if content.startswith(SUCCESS_PREFIX):
         return True
     if content.startswith(FAILURE_PREFIX):
         return False
-    # 其他情况：检测错误模式
+    # Other cases: detect error patterns
     error_patterns = [
         'Traceback (most recent call last)',
         'Exception:',
@@ -114,16 +114,16 @@ def is_success(content: str) -> bool:
 
 def resolve_path(file_path: str, working_directory: Path) -> Path:
     """
-    解析文件路径，处理相对路径和 ~ 展开
+    Resolve file path, handling relative paths and ~ expansion
 
     Args:
-        file_path: 文件路径（绝对或相对，支持 ~ 表示用户主目录）
-        working_directory: 工作目录
+        file_path: File path (absolute or relative, supports ~ for home directory)
+        working_directory: Working directory
 
     Returns:
-        解析后的绝对路径
+        Resolved absolute path
     """
-    path = Path(file_path).expanduser()  # 处理 ~ 展开
+    path = Path(file_path).expanduser()  # Handle ~ expansion
     if not path.is_absolute():
         path = working_directory / path
     return path
@@ -131,55 +131,55 @@ def resolve_path(file_path: str, working_directory: Path) -> Path:
 
 def truncate(content: str, max_length: int, suffix: str = "\n... (truncated)") -> str:
     """
-    截断内容到指定长度
+    Truncate content to specified length
 
     Args:
-        content: 要截断的内容
-        max_length: 最大长度
-        suffix: 截断后添加的后缀
+        content: Content to truncate
+        max_length: Maximum length
+        suffix: Suffix to append after truncation
 
     Returns:
-        截断后的内容
+        Truncated content
     """
     if len(content) > max_length:
         return content[:max_length] + suffix
     return content
 
 
-# === Claude Code 风格紧凑格式化 ===
+# === Claude Code style compact formatting ===
 
 def format_tool_compact(name: str, args: dict | None) -> str:
     """
-    格式化为 Claude Code 风格的紧凑格式：ToolName(arg1, arg2, ...)
+    Format as Claude Code style compact format: ToolName(arg1, arg2, ...)
 
     Args:
-        name: 工具名称
-        args: 工具参数字典
+        name: Tool name
+        args: Tool arguments dictionary
 
     Returns:
-        格式化的字符串，如 "Bash(git status)" 或 "Read(path/to/file.py)"
+        Formatted string, e.g. "Bash(git status)" or "Read(path/to/file.py)"
     """
     if not args:
         return f"{name}()"
 
-    # 针对常用工具提取关键参数
+    # Extract key parameters for common tools
     name_lower = name.lower()
 
     if name_lower == "bash":
         cmd = args.get("command", "")
-        # 截断过长的命令
+        # Truncate long commands
         if len(cmd) > 50:
             cmd = cmd[:47] + "..."
         return f"Bash({cmd})"
 
     elif name_lower in ("read", "read_file"):
         path = args.get("file_path", "")
-        # 只显示文件名或短路径（跨平台兼容）
+        # Show only filename or short path (cross-platform compatible)
         if len(path) > 40:
             path_obj = PurePath(path)
             parts = path_obj.parts
             if len(parts) > 2:
-                path = ".../" + "/".join(parts[-2:])  # 统一使用 / 显示
+                path = ".../" + "/".join(parts[-2:])
         return f"Read({path})"
 
     elif name_lower in ("write", "write_file"):
@@ -188,7 +188,7 @@ def format_tool_compact(name: str, args: dict | None) -> str:
             path_obj = PurePath(path)
             parts = path_obj.parts
             if len(parts) > 2:
-                path = ".../" + "/".join(parts[-2:])  # 统一使用 / 显示
+                path = ".../" + "/".join(parts[-2:])
         return f"Write({path})"
 
     elif name_lower == "edit":
@@ -197,7 +197,7 @@ def format_tool_compact(name: str, args: dict | None) -> str:
             path_obj = PurePath(path)
             parts = path_obj.parts
             if len(parts) > 2:
-                path = ".../" + "/".join(parts[-2:])  # 统一使用 / 显示
+                path = ".../" + "/".join(parts[-2:])
         return f"Edit({path})"
 
     elif name_lower == "glob":
@@ -219,15 +219,15 @@ def format_tool_compact(name: str, args: dict | None) -> str:
 
     elif name_lower == "exec_python":
         code = args.get("code", "")
-        # 显示代码的第一行或前30个字符
+        # Show first line of code or first 30 characters
         first_line = code.split('\n')[0] if code else ""
         if len(first_line) > 30:
             first_line = first_line[:27] + "..."
         return f"exec_python({first_line})"
 
-    # ADF 工具的紧凑格式
+    # Compact format for ADF tools
     elif name_lower.startswith("adf_"):
-        # 提取关键参数
+        # Extract key parameters
         key_params = []
         for key in ["name", "filter_type", "minutes"]:
             if key in args:
@@ -238,7 +238,7 @@ def format_tool_compact(name: str, args: dict | None) -> str:
         params_str = ", ".join(key_params) if key_params else ""
         return f"{name}({params_str})"
 
-    # 默认格式：显示前几个参数
+    # Default format: show first few parameters
     params = []
     for k, v in list(args.items())[:2]:
         v_str = str(v)
@@ -255,17 +255,17 @@ def format_tool_compact(name: str, args: dict | None) -> str:
 
 def format_tree_output(lines: list[str], max_lines: int = 5, indent: str = "  ") -> str:
     """
-    将输出格式化为树形结构（Claude Code 风格）
+    Format output as tree structure (Claude Code style)
 
     Args:
-        lines: 输出行列表
-        max_lines: 最大显示行数
-        indent: 缩进字符
+        lines: List of output lines
+        max_lines: Maximum number of lines to display
+        indent: Indent characters
 
     Returns:
-        格式化的树形输出字符串
+        Formatted tree output string
 
-    示例输出:
+    Example output:
         └ On branch main
           Your branch is up to date
           ... +16 lines
@@ -277,11 +277,10 @@ def format_tree_output(lines: list[str], max_lines: int = 5, indent: str = "  ")
     display_lines = lines[:max_lines]
 
     for i, line in enumerate(display_lines):
-        # 第一行使用 └，后续行使用空格对齐
         prefix = "└" if i == 0 else " "
         result.append(f"{indent}{prefix} {line}")
 
-    # 如果有更多行，显示折叠提示
+    # Show collapse hint if there are more lines
     remaining = len(lines) - max_lines
     if remaining > 0:
         result.append(f"{indent}  ... +{remaining} lines")
@@ -290,7 +289,7 @@ def format_tree_output(lines: list[str], max_lines: int = 5, indent: str = "  ")
 
 
 def count_lines(content: str) -> int:
-    """统计内容行数"""
+    """Count lines in content"""
     if not content:
         return 0
     return len(content.strip().split("\n"))
@@ -298,14 +297,14 @@ def count_lines(content: str) -> int:
 
 def truncate_with_line_hint(content: str, max_lines: int = 5) -> tuple[str, int]:
     """
-    按行数截断内容，并返回剩余行数
+    Truncate content by line count and return remaining line count
 
     Args:
-        content: 要截断的内容
-        max_lines: 最大显示行数
+        content: Content to truncate
+        max_lines: Maximum number of lines to display
 
     Returns:
-        (截断后的内容, 剩余行数)
+        (truncated content, remaining line count)
     """
     lines = content.strip().split("\n")
     total = len(lines)

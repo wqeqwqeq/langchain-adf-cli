@@ -1,17 +1,17 @@
 """
-TokenTracker - Token 使用量追踪
+TokenTracker - Token usage tracking
 
-从 AIMessage/AIMessageChunk 中提取 usage_metadata，
-并在多次 LLM 调用（如工具使用场景）中累积统计。
+Extracts usage_metadata from AIMessage/AIMessageChunk and accumulates
+statistics across multiple LLM calls (e.g. in tool use scenarios).
 
-API 返回的 usage_metadata 是每次 API 调用的独立值（非跨 turn 累积）：
-- input_tokens: 该次调用的总输入 token（已包含 cache tokens）
-- output_tokens: 该次调用的输出 token（独立值）
-- input_token_details.cache_creation: 首次写入缓存的 token 数（cache init）
-- input_token_details.cache_read: 从缓存命中的 token 数（cached）
+The usage_metadata returned by the API is an independent value per API call (not accumulated across turns):
+- input_tokens: Total input tokens for this call (already includes cache tokens)
+- output_tokens: Output tokens for this call (independent value)
+- input_token_details.cache_creation: Tokens written to cache for the first time (cache init)
+- input_token_details.cache_read: Tokens read from cache (cached)
 
-LangChain 的 input_tokens = raw_input + cache_creation + cache_read，
-即 cache tokens 是 input_tokens 的子集，不是额外的。
+LangChain's input_tokens = raw_input + cache_creation + cache_read,
+i.e. cache tokens are a subset of input_tokens, not additional.
 """
 
 from dataclasses import dataclass, field
@@ -21,7 +21,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 
 @dataclass
 class TokenUsageInfo:
-    """Token 使用量信息"""
+    """Token usage information"""
     input_tokens: int = 0
     output_tokens: int = 0
     total_tokens: int = 0
@@ -29,7 +29,7 @@ class TokenUsageInfo:
     cache_read_input_tokens: int = 0
 
     def __add__(self, other: "TokenUsageInfo") -> "TokenUsageInfo":
-        """支持 + 运算符累加"""
+        """Support + operator for accumulation"""
         return TokenUsageInfo(
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
@@ -39,34 +39,35 @@ class TokenUsageInfo:
         )
 
     def is_empty(self) -> bool:
-        """检查是否为空（没有任何 token 统计）"""
+        """Check if empty (no token statistics)"""
         return self.total_tokens == 0
 
 
 @dataclass
 class TokenTracker:
     """
-    Token 使用量追踪器
+    Token usage tracker
 
-    每次 LLM API 调用返回的 usage_metadata 是该次调用的独立值。
-    TokenTracker 直接使用 raw 值作为 per-turn 统计，
-    并通过 SUM 所有 turn 得到最终总计。
+    The usage_metadata returned by each LLM API call is an independent value for that call.
+    TokenTracker uses the raw values directly as per-turn statistics,
+    and computes the final total by summing all turns.
     """
-    # 当前 turn 的 usage（直接来自 API raw 值）
+    # Current turn's usage (directly from API raw values)
     _current_turn: TokenUsageInfo = field(default_factory=TokenUsageInfo)
-    # 所有已 finalize 的 turn 的总计
+    # Total of all finalized turns
     _total: TokenUsageInfo = field(default_factory=TokenUsageInfo)
-    # 是否已接收到当前 turn 的 usage 数据
+    # Whether current turn's usage data has been received
     _has_current_usage: bool = False
 
     def update(self, chunk: AIMessage | AIMessageChunk) -> None:
         """
-        从 chunk 提取 token 统计
+        Extract token statistics from chunk
 
-        使用 merge 策略：取各字段的 max 值，确保 usage 分散在多个
-        chunk 时（如 input 和 cache 在前、output 在后），不会丢失数据。
+        Uses a merge strategy: takes the max of each field to ensure that when
+        usage is spread across multiple chunks (e.g. input and cache in earlier
+        chunks, output in later ones), no data is lost.
 
-        LangChain input_tokens 已包含 cache tokens：
+        LangChain input_tokens already includes cache tokens:
         input_tokens = raw_input + cache_read + cache_creation
         """
         usage = getattr(chunk, "usage_metadata", None)
@@ -77,7 +78,7 @@ class TokenTracker:
             self._extract_usage(usage)
 
         if input_tokens > 0 or output_tokens > 0:
-            # Merge: 取 max 保留各 chunk 的非零值
+            # Merge: take max to preserve non-zero values from each chunk
             cur = self._current_turn
             merged_input = max(cur.input_tokens, input_tokens)
             merged_output = max(cur.output_tokens, output_tokens)
@@ -92,7 +93,7 @@ class TokenTracker:
 
     @staticmethod
     def _extract_usage(usage) -> tuple[int, int, int, int]:
-        """从 usage_metadata 提取 (input, output, cache_creation, cache_read)"""
+        """Extract (input, output, cache_creation, cache_read) from usage_metadata"""
         if isinstance(usage, dict):
             input_tokens = usage.get("input_tokens", 0) or 0
             output_tokens = usage.get("output_tokens", 0) or 0
@@ -113,12 +114,12 @@ class TokenTracker:
 
     def finalize_turn(self) -> TokenUsageInfo | None:
         """
-        结束当前 turn，返回该 turn 的使用量并累加到总计
+        Finalize the current turn, return its usage and accumulate into total
 
-        在工具结果返回后调用，表示一轮 LLM 调用结束。
+        Called after a tool result is returned, indicating one round of LLM calls is complete.
 
         Returns:
-            该 turn 的 TokenUsageInfo，如果没有使用量则返回 None
+            TokenUsageInfo for this turn, or None if there is no usage
         """
         if self._has_current_usage:
             current = self._current_turn
@@ -130,17 +131,17 @@ class TokenTracker:
 
     def get_usage(self) -> TokenUsageInfo:
         """
-        获取总计（包括未 finalize 的 turn）
+        Get total usage (including unfinalized turn)
 
         Returns:
-            TokenUsageInfo: 所有 turn 的 SUM
+            TokenUsageInfo: Sum of all turns
         """
         if self._has_current_usage:
             return self._total + self._current_turn
         return self._total
 
     def reset(self) -> None:
-        """重置所有统计"""
+        """Reset all statistics"""
         self._current_turn = TokenUsageInfo()
         self._total = TokenUsageInfo()
         self._has_current_usage = False

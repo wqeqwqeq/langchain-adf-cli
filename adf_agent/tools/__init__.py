@@ -1,7 +1,7 @@
 """
-ADF Agent 工具集
+ADF Agent Tools
 
-导出所有可用工具。
+Exports all available tools.
 """
 
 from .general_tools import (
@@ -35,7 +35,7 @@ from .skill_tools import (
 
 from .azure_adf_client import ADFClient
 
-# 所有工具列表
+# All tools list
 ALL_TOOLS = [
     # Skill tools
     load_skill,

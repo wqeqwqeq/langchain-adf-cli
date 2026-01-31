@@ -1,10 +1,10 @@
 """
 ADF Agent CLI
 
-命令行入口，提供交互式对话功能：
-- 流式输出支持 Extended Thinking
-- ADF 配置状态显示
-- 工具调用可视化
+Command-line entry point providing interactive conversation:
+- Streaming output with Extended Thinking support
+- ADF configuration status display
+- Tool call visualization
 """
 
 import argparse
@@ -39,24 +39,24 @@ from .stream import (
 )
 
 
-# 加载环境变量
+# Load environment variables
 load_dotenv(override=True)
 
 # MLflow tracking
 from .observability import setup_mlflow_tracking
 setup_mlflow_tracking()
 
-# Rich Console 配置
+# Rich Console configuration
 console = Console(
     legacy_windows=(sys.platform == 'win32'),
     no_color=os.getenv('NO_COLOR') is not None,
 )
 
-# 全局工具结果格式化器
+# Global tool result formatter
 formatter = ToolResultFormatter()
 
 
-# === 终端高度计算 ===
+# === Terminal height calculation ===
 
 
 def compute_height_budget(
@@ -68,33 +68,35 @@ def compute_height_budget(
     num_results: int,
     show_processing: bool,
 ) -> dict:
-    """根据终端高度和当前活动区域，动态分配各区域的内容行数。
+    """Dynamically allocate content line counts for each region based on
+    terminal height and currently active regions.
 
-    确保所有区域（含边框、工具名称行等固定开销）的总高度 <= terminal_height。
-    分配优先级：response > tools > thinking。
+    Ensures all regions (including borders, tool name lines, and other fixed
+    overhead) fit within terminal_height.
+    Allocation priority: response > tools > thinking.
 
     Returns:
         {"thinking": int, "response": int, "lines_per_tool": int}
     """
     num_pending = max(0, num_tools - num_results)
 
-    # 固定开销（边框、工具名称行、spinner 等不可压缩的行）
-    fixed = 2  # 顶部/底部边距
+    # Fixed overhead (borders, tool name lines, spinners, etc.)
+    fixed = 2  # Top/bottom margins
     if has_thinking:
-        fixed += 2  # Panel 上下边框
+        fixed += 2  # Panel top/bottom borders
     if has_response:
-        fixed += 2  # Panel 上下边框
+        fixed += 2  # Panel top/bottom borders
     if has_response_placeholder:
         fixed += 1
     if show_processing:
         fixed += 1
-    fixed += num_tools    # 每个 tool 的名称行
-    fixed += num_pending  # 未完成 tool 的 spinner 行
+    fixed += num_tools    # One name line per tool
+    fixed += num_pending  # One spinner line per pending tool
 
-    # 可分配的内容行数（thinking 内容 + tool 结果 + response 内容）
+    # Available content lines (thinking content + tool results + response content)
     content_budget = max(6, terminal_height - fixed)
 
-    # 按优先级分配：response > tools > thinking
+    # Allocate by priority: response > tools > thinking
     thinking_h = 0
     tool_result_budget = 0
     response_h = 0
@@ -121,7 +123,7 @@ def compute_height_budget(
     elif num_results > 0:
         tool_result_budget = content_budget
 
-    # 每个 tool 结果的显示行数（-1 预留 token usage 行）
+    # Display lines per tool result (-1 to reserve a line for token usage)
     if num_results > 0 and tool_result_budget > 0:
         lines_per_tool = max(1, tool_result_budget // num_results - 1)
     else:
@@ -135,17 +137,17 @@ def compute_height_budget(
 
 
 def truncate_to_lines(text: str, max_lines: int) -> str:
-    """截断文本到指定行数，保留最新内容"""
+    """Truncate text to a given number of lines, keeping the most recent content"""
     lines = text.split('\n')
     if len(lines) <= max_lines:
         return text
     return "...\n" + '\n'.join(lines[-max_lines + 1:])
 
 
-# === 流式处理状态 ===
+# === Streaming state ===
 
 class StreamState:
-    """流式处理状态容器"""
+    """Streaming state container"""
 
     def __init__(self):
         self.thinking_text = ""
@@ -159,7 +161,7 @@ class StreamState:
         self.turn_token_usages = []  # Per-turn token usages (aligned with tool_results)
 
     def handle_event(self, event: dict) -> str:
-        """处理单个流式事件"""
+        """Handle a single streaming event"""
         event_type = event.get("type")
 
         if event_type == "thinking":
@@ -186,7 +188,7 @@ class StreamState:
                 "args": event.get("args", {}),
             }
 
-            # 用 tool_id 去重和更新
+            # Deduplicate and update by tool_id
             if tool_id:
                 updated = False
                 for i, tc in enumerate(self.tool_calls):
@@ -222,13 +224,13 @@ class StreamState:
             is_total = event.get("is_total", False)
             parallel_count = event.get("parallel_count", 1)
             if is_total:
-                # 汇总（所有 API 调用的 SUM）
+                # Aggregate (SUM of all API calls)
                 self.token_usage = usage
             else:
-                # Per-turn: parallel tools 的 token 显示在最后一个 tool 上
+                # Per-turn: parallel tools' tokens shown on the last tool
                 if parallel_count > 1:
                     usage["parallel_count"] = parallel_count
-                    # 为前面的 parallel tools 填充 None
+                    # Fill None for preceding parallel tools
                     while len(self.turn_token_usages) < len(self.tool_results) - 1:
                         self.turn_token_usages.append(None)
                 if len(self.tool_results) > len(self.turn_token_usages):
@@ -244,7 +246,7 @@ class StreamState:
         return event_type
 
     def get_display_args(self) -> dict:
-        """获取用于 create_streaming_display 的参数"""
+        """Get arguments for create_streaming_display"""
         return {
             "thinking_text": self.thinking_text,
             "response_text": self.response_text,
@@ -258,15 +260,15 @@ class StreamState:
 
 
 def display_token_usage(token_usage: dict) -> None:
-    """显示汇总 token 使用量
+    """Display aggregate token usage
 
-    LangChain 的 input_tokens 已包含 cache tokens：
+    LangChain's input_tokens already includes cache tokens:
         input_tokens = new_input + cache_creation + cache_read
 
-    显示格式按 cache 状态分三种：
-    - 混合:   "8,537 new + 3,269 cache init + 13,076 cached = 24,882 in / 727 out"
-    - 全命中: "8,525 + 16,345 cached = 24,870 in / 692 out"
-    - 无缓存: "5,000 in / 200 out"
+    Display format varies by cache status:
+    - Mixed:    "8,537 new + 3,269 cache init + 13,076 cached = 24,882 in / 727 out"
+    - All hit:  "8,525 + 16,345 cached = 24,870 in / 692 out"
+    - No cache: "5,000 in / 200 out"
     """
     if not token_usage:
         return
@@ -280,18 +282,17 @@ def display_token_usage(token_usage: dict) -> None:
     if total_tokens == 0:
         return
 
-    # 格式化数字，添加千位分隔符
     def fmt(n: int) -> str:
         return f"{n:,}"
 
-    # 分隔线和 token 信息
+    # Separator and token info
     console.print("─" * 40, style="dim")
 
     cached_total = cache_read + cache_creation
     if cached_total > 0:
         new_input = input_tokens - cached_total
         if cache_read > 0 and cache_creation > 0:
-            # 混合：分项列出
+            # Mixed: itemized breakdown
             base = (
                 f"Tokens: {fmt(new_input)} new"
                 f" + {fmt(cache_creation)} cache init"
@@ -315,12 +316,12 @@ def display_token_usage(token_usage: dict) -> None:
 
 
 def format_turn_token_usage(token_usage: dict | None) -> Text | None:
-    """格式化单个 turn 的 token 使用量（内联显示）
+    """Format a single turn's token usage (inline display)
 
-    input_tokens 已包含 cache tokens，显示 new + cached 分解：
-    - cache init: "356 + 3,269 cache init / 162 out"  （首次缓存）
-    - cached:     "1,431 + 3,269 cached / 63 out"     （缓存命中）
-    - 无缓存:     "3,625 in / 155 out"
+    input_tokens already includes cache tokens; shows new + cached breakdown:
+    - cache init: "356 + 3,269 cache init / 162 out"  (first-time cache)
+    - cached:     "1,431 + 3,269 cached / 63 out"     (cache hit)
+    - no cache:   "3,625 in / 155 out"
     """
     if not token_usage:
         return None
@@ -334,7 +335,6 @@ def format_turn_token_usage(token_usage: dict | None) -> Text | None:
     if input_tokens == 0 and output_tokens == 0:
         return None
 
-    # 格式化数字，添加千位分隔符
     def fmt(n: int) -> str:
         return f"{n:,}"
 
@@ -364,7 +364,7 @@ def format_tool_result_compact(
     max_lines: int = 5,
     token_usage: dict | None = None,
 ) -> list:
-    """使用树形格式显示工具结果"""
+    """Display tool results in tree format"""
     elements = []
 
     if not content.strip():
@@ -385,7 +385,7 @@ def format_tool_result_compact(
         if remaining > 0:
             elements.append(Text(f"    ... +{remaining} lines", style="dim italic"))
 
-    # 添加 token 使用量显示（在结果下方）
+    # Add token usage display (below the result)
     token_text = format_turn_token_usage(token_usage)
     if token_text:
         elements.append(token_text)
@@ -401,8 +401,8 @@ def display_final_results(
     show_tools: bool = True,
     show_response_panel: bool = True,
 ):
-    """显示最终结果"""
-    # 显示 thinking
+    """Display final results"""
+    # Display thinking
     if show_thinking and state.thinking_text:
         display_thinking = state.thinking_text
         if len(display_thinking) > thinking_max_length:
@@ -414,13 +414,13 @@ def display_final_results(
             border_style="blue",
         ))
 
-    # 显示工具调用和结果
+    # Display tool calls and results
     if show_tools and state.tool_calls:
         for i, tc in enumerate(state.tool_calls):
             has_result = i < len(state.tool_results)
             tr = state.tool_results[i] if has_result else None
             content = tr.get('content', '') if tr else ''
-            # 获取该 turn 的 token 使用量
+            # Get this turn's token usage
             turn_tokens = state.turn_token_usages[i] if i < len(state.turn_token_usages) else None
 
             if has_result and is_success(content):
@@ -450,7 +450,7 @@ def display_final_results(
                     console.print(elem)
         console.print()
 
-    # 显示最终响应
+    # Display final response
     if state.response_text:
         if show_response_panel:
             console.print(Panel(
@@ -463,7 +463,7 @@ def display_final_results(
             console.print(Markdown(state.response_text))
             console.print()
 
-    # 显示 token 使用量
+    # Display token usage
     display_token_usage(state.token_usage)
 
 
@@ -479,19 +479,19 @@ def create_streaming_display(
     is_processing: bool = False,
     terminal_height: int = 25,
 ) -> Group:
-    """创建流式显示的布局，确保总高度不超过终端高度"""
+    """Create the streaming display layout, ensuring total height does not exceed terminal height"""
     elements = []
     tool_calls = tool_calls or []
     tool_results = tool_results or []
     turn_token_usages = turn_token_usages or []
 
-    # 初始等待状态
+    # Initial waiting state
     if is_waiting and not thinking_text and not response_text and not tool_calls:
-        spinner = Spinner("dots", text=" AI 正在思考中...", style="cyan")
+        spinner = Spinner("dots", text=" AI is thinking...", style="cyan")
         elements.append(spinner)
         return Group(*elements)
 
-    # === 动态高度预算 ===
+    # === Dynamic height budget ===
     has_thinking = bool(thinking_text)
     has_response = bool(response_text)
     has_response_placeholder = is_responding and not thinking_text and not has_response
@@ -512,9 +512,9 @@ def create_streaming_display(
     response_h = heights["response"]
     lines_per_tool = heights["lines_per_tool"]
 
-    # === 构建各区域 ===
+    # === Build each region ===
 
-    # Thinking 面板
+    # Thinking panel
     if thinking_text:
         thinking_title = "Thinking"
         if is_thinking:
@@ -529,7 +529,7 @@ def create_streaming_display(
             height=panel_h,
         ))
 
-    # Tool Calls 显示
+    # Tool Calls display
     if tool_calls:
         for i, tc in enumerate(tool_calls):
             has_result = i < len(tool_results)
@@ -563,15 +563,15 @@ def create_streaming_display(
                 )
                 elements.extend(result_elements[:lines_per_tool + 1])  # +1 for token line
             else:
-                spinner = Spinner("dots", text=" 执行中...", style="yellow")
+                spinner = Spinner("dots", text=" Executing...", style="yellow")
                 elements.append(spinner)
 
-    # 工具执行后等待
+    # Post-tool-execution waiting
     if show_processing:
-        spinner = Spinner("dots", text=" AI 正在分析结果...", style="cyan")
+        spinner = Spinner("dots", text=" AI is analyzing results...", style="cyan")
         elements.append(spinner)
 
-    # Response 面板
+    # Response panel
     if response_text:
         response_title = "Response"
         if is_responding:
@@ -594,7 +594,7 @@ def create_streaming_display(
 # === Onboarding ===
 
 def _needs_onboarding() -> bool:
-    """检查是否需要 onboarding（没有任何 API 凭证）"""
+    """Check if onboarding is needed (no API credentials configured)"""
     has_anthropic = bool(
         os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")
     )
@@ -603,7 +603,7 @@ def _needs_onboarding() -> bool:
 
 
 def _read_key() -> str | None:
-    """读取单个按键，处理方向键转义序列"""
+    """Read a single keypress, handling arrow key escape sequences"""
     import tty, termios
 
     fd = sys.stdin.fileno()
@@ -629,12 +629,12 @@ def _select(title: str, options: list[tuple[str, str]], default: int = 0) -> str
     Arrow-key inline selector.
 
     Args:
-        title: 标题
+        title: Title text
         options: [(value, label), ...]
-        default: 默认选中索引
+        default: Default selected index
 
     Returns:
-        选中的 value，Ctrl+C 返回 None
+        Selected value, or None on Ctrl+C
     """
     selected = default
     n = len(options)
@@ -673,7 +673,7 @@ def _select(title: str, options: list[tuple[str, str]], default: int = 0) -> str
 
 
 def _update_env_file(env_path: Path, updates: dict[str, str]):
-    """更新 .env 文件中的 key=value，处理重复 key"""
+    """Update key=value pairs in a .env file, handling duplicate keys"""
     content = env_path.read_text(encoding="utf-8")
     lines = content.splitlines()
     updated_keys = set()
@@ -692,12 +692,12 @@ def _update_env_file(env_path: Path, updates: dict[str, str]):
             new_lines.append(f"{key}={updates[key]}")
             updated_keys.add(key)
         elif key in updates:
-            # 重复的 key，注释掉
+            # Duplicate key, comment it out
             new_lines.append(f"# {line}")
         else:
             new_lines.append(line)
 
-    # 追加文件中不存在的 key
+    # Append keys not found in the file
     for key, value in updates.items():
         if key not in updated_keys:
             new_lines.append(f"{key}={value}")
@@ -707,10 +707,10 @@ def _update_env_file(env_path: Path, updates: dict[str, str]):
 
 def run_onboarding() -> bool:
     """
-    交互式 onboarding：引导用户配置 API 凭证。
+    Interactive onboarding: guide the user through API credential setup.
 
     Returns:
-        True 如果配置成功完成
+        True if configuration was completed successfully
     """
     console.print()
     console.print(Panel(
@@ -764,7 +764,7 @@ def run_onboarding() -> bool:
             console.print("  [red]Base URL is required for Azure Foundry.[/red]")
             return False
 
-    # --- 写入 .env ---
+    # --- Write to .env ---
     env_file = Path.cwd() / ".env"
     env_example = Path.cwd() / ".env.example"
 
@@ -784,7 +784,7 @@ def run_onboarding() -> bool:
 
     _update_env_file(env_file, updates)
 
-    # 完成提示
+    # Completion message
     provider_label = "Azure AI Foundry" if is_foundry else "Anthropic"
     console.print()
     console.print(Panel(
@@ -800,24 +800,24 @@ def run_onboarding() -> bool:
 
 
 def print_banner():
-    """打印欢迎横幅"""
+    """Print the welcome banner"""
     banner = """
 [bold cyan]ADF Agent[/bold cyan]
-[dim]Azure Data Factory 助手[/dim]
+[dim]Azure Data Factory Assistant[/dim]
 
-帮助你探索和管理 Azure Data Factory 资源：
-- 列出和分析 Pipelines、Linked Services、Integration Runtimes
-- 测试连接、启用 Interactive Authoring
-- 使用 Python 分析 JSON 数据
+Helps you explore and manage Azure Data Factory resources:
+- List and analyze Pipelines, Linked Services, Integration Runtimes
+- Test connections, enable Interactive Authoring
+- Analyze JSON data with Python
 """
     console.print(Panel(banner, title="ADF Agent", border_style="cyan"))
 
 
 def show_config_status(agent: ADFAgent = None):
-    """显示配置状态
+    """Display configuration status
 
     Args:
-        agent: 可选，如果提供则显示实际的 session_dir
+        agent: Optional; if provided, shows the actual session_dir
     """
     if agent:
         config = agent.adf_config
@@ -827,20 +827,20 @@ def show_config_status(agent: ADFAgent = None):
     if config.is_configured():
         console.print(f"[green]✓[/green] ADF: {config.factory_name} (RG: {config.resource_group})")
 
-    # 显示存储位置（仅当使用 temp 目录时）
+    # Show storage location (only when using temp directory)
     if not _use_workspace():
         if agent:
-            # 使用 Agent 的实际 session_dir
+            # Use Agent's actual session_dir
             console.print(f"[dim]📁 Session dir: {agent.context.session_dir}[/dim]")
         else:
-            # 只显示 base 路径
+            # Show base path only
             import tempfile
             base_path = Path(tempfile.gettempdir()) / "adf_agent" / "sessions"
             console.print(f"[dim]📁 Output dir: {base_path}/[/dim]")
 
 
 def cmd_run(prompt: str, enable_thinking: bool = True):
-    """执行单次请求"""
+    """Execute a single request"""
     console.print(Panel(f"[bold cyan]User Request:[/bold cyan]\n{prompt}"))
     console.print()
 
@@ -877,12 +877,12 @@ def cmd_run(prompt: str, enable_thinking: bool = True):
 
 
 def cmd_interactive(enable_thinking: bool = True):
-    """交互式对话模式"""
+    """Interactive conversation mode"""
     print_banner()
 
     agent = ADFAgent(enable_thinking=enable_thinking)
 
-    # 显示配置状态（传入 agent 以显示实际的 session_dir）
+    # Display configuration status (pass agent to show actual session_dir)
     show_config_status(agent)
     console.print()
 
@@ -892,7 +892,7 @@ def cmd_interactive(enable_thinking: bool = True):
 
     thread_id = "interactive"
 
-    # 初始化 prompt_toolkit session
+    # Initialize prompt_toolkit session
     history_file = str(Path.home() / ".adf_agent_history")
     session = PromptSession(
         history=FileHistory(history_file),
@@ -909,7 +909,7 @@ def cmd_interactive(enable_thinking: bool = True):
             if not user_input:
                 continue
 
-            # 特殊命令
+            # Special commands
             if user_input.lower() in ("/exit", "/quit", "/q"):
                 console.print("[dim]Goodbye![/dim]")
                 break
@@ -922,7 +922,7 @@ def cmd_interactive(enable_thinking: bool = True):
                 show_config_status(agent)
                 continue
 
-            # 运行 agent
+            # Run agent
             console.print()
 
             state = StreamState()
@@ -940,7 +940,7 @@ def cmd_interactive(enable_thinking: bool = True):
                     if event_type in ("tool_call", "tool_result"):
                         live.refresh()
 
-            # 显示最终结果（交互模式简化显示）
+            # Display final results (simplified for interactive mode)
             display_final_results(
                 state,
                 thinking_max_length=500,
@@ -949,7 +949,7 @@ def cmd_interactive(enable_thinking: bool = True):
                 show_tools=True,
                 show_response_panel=True,
             )
-            console.print()  # 与下一个输入提示保持距离
+            console.print()  # Spacing before next input prompt
 
         except KeyboardInterrupt:
             console.print("\n[dim]Goodbye![/dim]")
@@ -959,26 +959,26 @@ def cmd_interactive(enable_thinking: bool = True):
 
 
 def show_help():
-    """显示帮助信息"""
+    """Display help information"""
     help_text = """
 ## Example Queries
 
 **List resources:**
-- 列出所有 pipeline
-- 列出所有 linked service
-- 列出 Snowflake 类型的 linked service
+- List all pipelines
+- List all linked services
+- List Snowflake-type linked services
 
 **Find relationships:**
-- 哪些 pipeline 使用了 Snowflake linked service?
-- 分析 linked service 类型分布
+- Which pipelines use a Snowflake linked service?
+- Analyze linked service type distribution
 
 **Test connections:**
-- 测试 linked service "my-snowflake" 的连接
-- 启用 Integration Runtime "ir-managed" 的 interactive authoring
+- Test linked service "my-snowflake" connection
+- Enable interactive authoring for Integration Runtime "ir-managed"
 
 **Analyze data:**
-- 分析 workspace/pipelines.json 中的数据
-- 统计每个 pipeline 的 activity 数量
+- Analyze data in workspace/pipelines.json
+- Count the number of activities per pipeline
 
 ## Commands
 
@@ -990,65 +990,65 @@ def show_help():
 
 
 def main():
-    """CLI 主入口"""
+    """CLI main entry point"""
     parser = argparse.ArgumentParser(
-        description="ADF Agent - Azure Data Factory 助手",
+        description="ADF Agent - Azure Data Factory Assistant",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # 交互式模式
+  # Interactive mode
   %(prog)s --interactive
 
-  # 执行单次请求
-  %(prog)s "列出所有 pipeline"
+  # Execute a single request
+  %(prog)s "List all pipelines"
 
-  # 禁用 thinking
-  %(prog)s --no-thinking "列出所有 linked service"
+  # Disable thinking
+  %(prog)s --no-thinking "List all linked services"
 """,
     )
 
     parser.add_argument(
         "prompt",
         nargs="?",
-        help="要执行的请求",
+        help="Request to execute",
     )
     parser.add_argument(
         "-i", "--interactive",
         action="store_true",
-        help="进入交互式对话模式",
+        help="Enter interactive conversation mode",
     )
     parser.add_argument(
         "--no-thinking",
         action="store_true",
-        help="禁用 Extended Thinking",
+        help="Disable Extended Thinking",
     )
     parser.add_argument(
         "--cwd",
         type=str,
-        help="设置工作目录",
+        help="Set working directory",
     )
 
     args = parser.parse_args()
 
-    # 设置工作目录
+    # Set working directory
     if args.cwd:
         os.chdir(args.cwd)
 
-    # Onboarding: 检查 API 凭证，缺失时引导配置
+    # Onboarding: check API credentials, guide setup if missing
     if _needs_onboarding():
         run_onboarding()
         sys.exit(0)
 
-    # thinking 开关
+    # Thinking toggle
     enable_thinking = not args.no_thinking
 
-    # 执行命令
+    # Execute command
     if args.interactive:
         cmd_interactive(enable_thinking=enable_thinking)
     elif args.prompt:
         cmd_run(args.prompt, enable_thinking=enable_thinking)
     else:
-        # 默认进入交互模式
+        # Default to interactive mode
         cmd_interactive(enable_thinking=enable_thinking)
 
 

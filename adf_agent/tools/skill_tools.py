@@ -1,7 +1,7 @@
 """
-Skill 工具
+Skill Tools
 
-提供 load_skill 工具，用于按需加载 Skill 详细指令（Level 2）。
+Provides the load_skill tool for loading Skill detailed instructions (Level 2) on demand.
 """
 
 from langchain.tools import tool, ToolRuntime

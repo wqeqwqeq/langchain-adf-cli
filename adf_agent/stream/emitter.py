@@ -1,7 +1,7 @@
 """
-StreamEventEmitter - 统一事件格式
+StreamEventEmitter - Unified event format
 
-所有事件都包含 type 和相关数据。
+All events contain a type and associated data.
 """
 
 from dataclasses import dataclass
@@ -10,32 +10,32 @@ from typing import Any, Dict
 
 @dataclass
 class StreamEvent:
-    """统一的流式事件"""
+    """Unified stream event"""
     type: str
     data: Dict[str, Any]
 
 
 class StreamEventEmitter:
-    """流式事件发射器"""
+    """Stream event emitter"""
 
     @staticmethod
     def thinking(content: str, thinking_id: int = 0) -> StreamEvent:
-        """思考内容事件"""
+        """Thinking content event"""
         return StreamEvent("thinking", {"type": "thinking", "content": content, "id": thinking_id})
 
     @staticmethod
     def text(content: str) -> StreamEvent:
-        """文本内容事件"""
+        """Text content event"""
         return StreamEvent("text", {"type": "text", "content": content})
 
     @staticmethod
     def tool_call(name: str, args: Dict[str, Any], tool_id: str = "") -> StreamEvent:
-        """工具调用事件"""
+        """Tool call event"""
         return StreamEvent("tool_call", {"type": "tool_call", "name": name, "args": args, "id": tool_id})
 
     @staticmethod
     def tool_result(name: str, content: str, success: bool = True) -> StreamEvent:
-        """工具结果事件"""
+        """Tool result event"""
         return StreamEvent("tool_result", {
             "type": "tool_result",
             "name": name,
@@ -45,12 +45,12 @@ class StreamEventEmitter:
 
     @staticmethod
     def done(response: str = "") -> StreamEvent:
-        """完成事件"""
+        """Done event"""
         return StreamEvent("done", {"type": "done", "response": response})
 
     @staticmethod
     def error(message: str) -> StreamEvent:
-        """错误事件"""
+        """Error event"""
         return StreamEvent("error", {"type": "error", "message": message})
 
     @staticmethod
@@ -63,11 +63,11 @@ class StreamEventEmitter:
         is_total: bool = False,
         parallel_count: int = 1,
     ) -> StreamEvent:
-        """Token 使用量事件
+        """Token usage event
 
         Args:
-            is_total: True 表示这是所有 turn 的汇总，False 表示单次 API 调用的用量
-            parallel_count: 该 API 调用中并行执行的 tool 数量（>1 表示 parallel tool use）
+            is_total: True means this is a summary across all turns, False means usage for a single API call
+            parallel_count: Number of tools executed in parallel in this API call (>1 means parallel tool use)
         """
         return StreamEvent("token_usage", {
             "type": "token_usage",

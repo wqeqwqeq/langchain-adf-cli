@@ -1,8 +1,8 @@
 """
-Azure Data Factory 客户端
+Azure Data Factory Client
 
-简化的 ADF 操作封装，使用 DefaultAzureCredential 认证。
-不依赖外部 azure_tools 包。
+Simplified ADF operations wrapper using DefaultAzureCredential authentication.
+Does not depend on external azure_tools package.
 """
 
 import time
@@ -15,9 +15,9 @@ from azure.mgmt.datafactory import DataFactoryManagementClient
 
 class ADFClient:
     """
-    Azure Data Factory 客户端
+    Azure Data Factory Client
 
-    使用 DefaultAzureCredential 进行认证，封装常用的 ADF 操作。
+    Authenticates with DefaultAzureCredential and wraps common ADF operations.
     """
 
     def __init__(
@@ -28,41 +28,41 @@ class ADFClient:
         credential: Optional[DefaultAzureCredential] = None,
     ):
         """
-        初始化 ADF 客户端
+        Initialize ADF client
 
         Args:
-            resource_group: Azure 资源组名称
-            factory_name: ADF 工厂名称
-            subscription_id: 订阅 ID（可选，会自动获取）
-            credential: Azure 凭据（可选，会自动创建 DefaultAzureCredential）
+            resource_group: Azure resource group name
+            factory_name: ADF factory name
+            subscription_id: Subscription ID (optional, auto-detected)
+            credential: Azure credential (optional, auto-creates DefaultAzureCredential)
         """
         self.resource_group = resource_group
         self.factory_name = factory_name
         self.credential = credential or DefaultAzureCredential()
 
-        # 获取 subscription_id
+        # Get subscription_id
         if subscription_id:
             self.subscription_id = subscription_id
         else:
             self.subscription_id = self._get_subscription_id()
 
-        # 创建 DataFactory 客户端
+        # Create DataFactory client
         self.client = DataFactoryManagementClient(
             credential=self.credential,
             subscription_id=self.subscription_id,
         )
 
-        # 缓存 token
+        # Cache token
         self._token = None
 
-    # === Pipeline 操作 ===
+    # === Pipeline Operations ===
 
     def list_pipelines(self):
         """
-        列出所有 Pipelines
+        List all Pipelines
 
         Returns:
-            ItemPaged[PipelineResource]，调用方自行 .as_dict()
+            ItemPaged[PipelineResource], caller should use .as_dict()
         """
         return self.client.pipelines.list_by_factory(
             resource_group_name=self.resource_group,
@@ -71,13 +71,13 @@ class ADFClient:
 
     def get_pipeline(self, name: str) -> Dict:
         """
-        获取 Pipeline 详情
+        Get Pipeline details
 
         Args:
-            name: Pipeline 名称
+            name: Pipeline name
 
         Returns:
-            Pipeline 定义字典
+            Pipeline definition dictionary
         """
         pipeline = self.client.pipelines.get(
             resource_group_name=self.resource_group,
@@ -86,20 +86,20 @@ class ADFClient:
         )
         return pipeline.as_dict()
 
-    # === 内部方法 ===
+    # === Internal Methods ===
 
     def _get_subscription_id(self) -> str:
-        """获取订阅 ID（优先从环境变量，否则从 Azure CLI 默认订阅）"""
+        """Get subscription ID (from environment variable first, then Azure CLI default subscription)"""
         import os
         import subprocess
         import json
 
-        # 1. 优先从环境变量读取
+        # 1. Read from environment variable first
         sub_id = os.getenv("AZURE_SUBSCRIPTION_ID") or os.getenv("ADF_SUBSCRIPTION_ID")
         if sub_id:
             return sub_id
 
-        # 2. 从 Azure CLI 获取默认订阅
+        # 2. Get default subscription from Azure CLI
         try:
             result = subprocess.run(
                 ["az", "account", "show", "--query", "id", "-o", "tsv"],
@@ -113,7 +113,7 @@ class ADFClient:
         except (subprocess.CalledProcessError, FileNotFoundError):
             pass
 
-        # 3. 回退到 SDK 方式（保持向后兼容）
+        # 3. Fall back to SDK method (for backward compatibility)
         from azure.mgmt.resource import SubscriptionClient
 
         sub_client = SubscriptionClient(self.credential)
@@ -122,15 +122,15 @@ class ADFClient:
         raise ValueError("No Azure subscription found")
 
     def _get_token(self) -> str:
-        """获取 Bearer Token（用于 REST API 调用）"""
+        """Get Bearer Token (for REST API calls)"""
         token = self.credential.get_token("https://management.azure.com/.default")
         return token.token
 
-    # === Dataset 操作 ===
+    # === Dataset Operations ===
 
     def list_datasets(self) -> List[Dict[str, str]]:
         """
-        列出所有 Datasets（轻量摘要）
+        List all Datasets (lightweight summary)
 
         Returns:
             [{"name": "xxx", "type": "AzureSqlTable", "linked_service": "my_ls"}, ...]
@@ -149,11 +149,11 @@ class ADFClient:
             })
         return result
 
-    # === Linked Service 操作 ===
+    # === Linked Service Operations ===
 
     def list_linked_services(self) -> List[Dict[str, str]]:
         """
-        列出所有 Linked Services（轻量摘要）
+        List all Linked Services (lightweight summary)
 
         Returns:
             [{"name": "xxx", "type": "AzureBlobStorage"}, ...]
@@ -172,15 +172,15 @@ class ADFClient:
 
     def get_linked_service(self, name: str) -> Dict:
         """
-        获取 Linked Service 详情
+        Get Linked Service details
 
         Args:
-            name: Linked Service 名称
+            name: Linked Service name
 
         Returns:
-            Linked Service 定义字典
+            Linked Service definition dictionary
         """
-        # 使用 REST API 获取完整详情（包括 typeProperties）
+        # Use REST API to get full details (including typeProperties)
         api_url = (
             f"https://management.azure.com/subscriptions/{self.subscription_id}"
             f"/resourcegroups/{self.resource_group}"
@@ -199,21 +199,21 @@ class ADFClient:
 
     def test_linked_service(self, name: str) -> Dict:
         """
-        测试 Linked Service 连接
+        Test Linked Service connection
 
         Args:
-            name: Linked Service 名称
+            name: Linked Service name
 
         Returns:
-            测试结果字典，包含 succeeded 字段
+            Test result dictionary containing succeeded field
         """
-        # 获取 linked service 详情
+        # Get linked service details
         linked_service = self.get_linked_service(name)
 
-        # 构建请求体
+        # Build request body
         body = {"linkedService": linked_service}
 
-        # 调用测试 API
+        # Call test API
         api_url = (
             f"https://management.azure.com/subscriptions/{self.subscription_id}"
             f"/resourcegroups/{self.resource_group}"
@@ -230,11 +230,11 @@ class ADFClient:
         response.raise_for_status()
         return response.json()
 
-    # === Integration Runtime 操作 ===
+    # === Integration Runtime Operations ===
 
     def list_integration_runtimes(self) -> List[Dict[str, str]]:
         """
-        列出所有 Integration Runtimes（轻量摘要）
+        List all Integration Runtimes (lightweight summary)
 
         Returns:
             [{"name": "xxx", "type": "Managed"}, ...]
@@ -253,13 +253,13 @@ class ADFClient:
 
     def get_integration_runtime_status(self, name: str) -> Dict:
         """
-        获取 Integration Runtime 状态
+        Get Integration Runtime status
 
         Args:
-            name: Integration Runtime 名称
+            name: Integration Runtime name
 
         Returns:
-            IR 状态字典
+            IR status dictionary
         """
         api_url = (
             f"https://management.azure.com/subscriptions/{self.subscription_id}"
@@ -279,13 +279,13 @@ class ADFClient:
 
     def get_integration_runtime_type(self, name: str) -> str:
         """
-        获取 Integration Runtime 类型
+        Get Integration Runtime type
 
         Args:
-            name: Integration Runtime 名称
+            name: Integration Runtime name
 
         Returns:
-            IR 类型（如 "Managed", "SelfHosted"）
+            IR type (e.g., "Managed", "SelfHosted")
         """
         status = self.get_integration_runtime_status(name)
         ir_type = status.get("properties", {}).get("type")
@@ -295,13 +295,13 @@ class ADFClient:
 
     def is_interactive_authoring_enabled(self, name: str) -> bool:
         """
-        检查 Interactive Authoring 是否已启用
+        Check if Interactive Authoring is enabled
 
         Args:
-            name: Integration Runtime 名称
+            name: Integration Runtime name
 
         Returns:
-            True 如果已启用
+            True if enabled
         """
         status = self.get_integration_runtime_status(name)
         interactive_status = (
@@ -314,16 +314,16 @@ class ADFClient:
 
     def enable_interactive_authoring(self, name: str, minutes: int = 10) -> None:
         """
-        启用 Interactive Authoring
+        Enable Interactive Authoring
 
         Args:
-            name: Integration Runtime 名称
-            minutes: 持续时间（分钟）
+            name: Integration Runtime name
+            minutes: Duration (in minutes)
 
         Raises:
-            ValueError: 如果 IR 类型不是 Managed
+            ValueError: If IR type is not Managed
         """
-        # 检查 IR 类型
+        # Check IR type
         ir_type = self.get_integration_runtime_type(name)
         if ir_type != "Managed":
             raise ValueError(
@@ -331,11 +331,11 @@ class ADFClient:
                 f"Current type: {ir_type}"
             )
 
-        # 检查是否已启用
+        # Check if already enabled
         if self.is_interactive_authoring_enabled(name):
-            return  # 已启用，无需操作
+            return  # Already enabled, no action needed
 
-        # 调用启用 API
+        # Call enable API
         api_url = (
             f"https://management.azure.com/subscriptions/{self.subscription_id}"
             f"/resourcegroups/{self.resource_group}"
@@ -353,8 +353,8 @@ class ADFClient:
         response = requests.post(api_url, headers=headers, json=body)
         response.raise_for_status()
 
-        # 等待启用完成
-        max_wait = 180  # 最多等待 3 分钟
+        # Wait for enablement to complete
+        max_wait = 180  # Wait up to 3 minutes
         waited = 0
         while waited < max_wait:
             if self.is_interactive_authoring_enabled(name):

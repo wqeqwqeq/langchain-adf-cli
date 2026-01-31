@@ -1,14 +1,14 @@
 [project]
 name = "adfagent"
 version = "0.1.0"
-description = "ADF Agent - Azure Data Factory 助手"
+description = "ADF Agent - Azure Data Factory Assistant"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     # CLI and display
     "rich>=14.2.0",
     "prompt-toolkit>=3.0.0",
-    # LangChain Agent 框架
+    # LangChain Agent framework
     "langchain>=1.0.0",
     "langchain-anthropic>=1.0.0",
     "langgraph>=1.0.0",
