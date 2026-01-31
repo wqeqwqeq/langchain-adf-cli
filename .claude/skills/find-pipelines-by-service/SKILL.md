@@ -34,20 +34,37 @@ If unsure about version (e.g. type just says "Snowflake" but user asked specific
 
 Collect the **names** of all matching linked services into a target set.
 
-### Step 4: Cross-Reference with exec_python
+### Step 4: Inspect Actual Data Structure
 
-Write a Python script that:
+Before writing any `exec_python` script, read sample files to understand the exact JSON keys. `exec_python` has high overhead, so invest time here to get it right on the first run.
+
+Read **all three** in parallel:
+
+- `read_file("datasets.json")` — check what keys each dataset object uses (e.g. `name`, `linked_service`, `linked_service_name`, `properties.linkedServiceName`, etc.)
+- `read_file("pipelines/<first_pipeline>.json")` — check activity structure, how linked services and datasets are referenced
+- `read_file("pipelines/<second_pipeline>.json")` — pick a different pipeline to confirm the pattern is consistent
+
+From these samples, note the **exact field names** for:
+
+1. **Dataset → linked service mapping**: what key holds the dataset name, what key holds the linked service reference
+2. **Pipeline activity → linked service (direct)**: what key on the activity holds a direct linked service reference
+3. **Pipeline activity → dataset (indirect)**: what key on the activity holds dataset references (`dataset`, `inputs`, `outputs`, or nested under `typeProperties`)
+4. **Reference name field**: whether it's `reference_name`, `referenceName`, or something else
+
+### Step 5: Cross-Reference with exec_python
+
+Using the **exact field names** observed in Step 4, write a Python script that:
 
 1. Loads `datasets.json` — builds a `dataset_name → linked_service_name` lookup
 2. Iterates all `pipelines/*.json` files
 3. For each pipeline, walks all activities and checks **both paths**:
-   - **Direct**: activity itself references a linked service (fields like `linked_service_name`, `resource_linked_service`, `reference_objects`)
-   - **Indirect**: activity references a dataset (fields like `dataset`, `inputs`, `outputs`), then looks up that dataset in the `dataset → linked_service` mapping
+   - **Direct**: activity itself references a linked service at the activity level
+   - **Indirect**: activity references a dataset, then looks up that dataset in the `dataset → linked_service` mapping
 4. Both paths must be checked — direct alone will miss dataset-based references, indirect alone will miss activity-level references
 5. Writes clear logs for each pipeline checked and each match found (for debugging)
-6. Outputs result as JSON: `{ "pipeline_name": ["ls_name1", "ls_name2"], ... }`
+6. Writes result to `results.json`: `{ "pipeline_name": ["ls_name1", "ls_name2"], ... }`
 
-**Reference code example** (adapt based on actual data structure):
+**Reference code example** — adapt field names based on what you observed in Step 4:
 
 ```python
 import json, os, glob as g
@@ -57,6 +74,7 @@ session_dir = os.environ.get("SESSION_DIR", ".")
 target_ls_names = {"snowflake_v1_ls", "snowflake_v2_prod"}  # from Step 3
 
 # --- Load datasets ---
+# IMPORTANT: Use the exact keys you saw in Step 4
 with open(os.path.join(session_dir, "datasets.json")) as f:
     datasets = json.load(f)
 ds_to_ls = {ds["name"]: ds["linked_service"] for ds in datasets}
@@ -73,6 +91,7 @@ for pf in pipeline_files:
     pipeline_name = pipeline.get("name", os.path.basename(pf))
     matched_ls = set()
 
+    # IMPORTANT: Use the exact path you saw in Step 4
     activities = pipeline.get("properties", {}).get("activities", [])
 
     for activity in activities:
@@ -97,7 +116,6 @@ for pf in pipeline_files:
             ds_ref = type_props.get(ds_field)
             if ds_ref is None:
                 continue
-            # Normalize to list
             refs = ds_ref if isinstance(ds_ref, list) else [ds_ref]
             for ref in refs:
                 if isinstance(ref, dict):
@@ -115,39 +133,28 @@ for pf in pipeline_files:
 
 print(f"\n=== Results: {len(results)} pipelines matched ===")
 print(json.dumps(results, indent=2))
+
+# --- Write results to file ---
+out_path = os.path.join(session_dir, "results.json")
+with open(out_path, "w") as f:
+    json.dump(results, f, indent=2)
+print(f"Results written to {out_path}")
 ```
 
-**Important**: The field names above (e.g. `linked_service_name`, `reference_name`, `type_properties`) are based on the Azure SDK `as_dict()` output. If `exec_python` fails with `KeyError`, read 1-2 pipeline files and `datasets.json` to check the actual JSON keys and adjust accordingly. If `exec_python` returns no elements or not find any match, read 1-2 pipeline and `datasets.json` directly as well
+### Step 6: If exec_python Fails or Returns Nothing — Debug and Retry
 
-### Step 5: If exec_python Fails or return nothing — Debug
+This should be rare if Step 4 was done properly. If it does happen:
 
-- If error relates to pipeline structure: `read_file("pipelines/<some_pipeline>.json")` to understand actual JSON keys
-- If error relates to dataset structure: `read_file("datasets.json")` to check format
-- Fix the code based on actual structure
-
-### Step 6: Retry exec_python
-
-Apply the fix and re-run. Maximum 3 attempts total.
+- Re-read the pipeline (PICK DIFFERENT PIPELINES!!!) /dataset files from Step 4 output, compare with the script's field names
+- Fix the mismatch and re-run
+- Maximum 2 retries (3 total attempts including the first run)
+- If retries occur, the last successful run's output is the final result. `results.json` always reflects the latest run.
 
 ### Step 7: Present Results
 
-Output the JSON mapping of `pipeline → [linked_services]`:
+After a successful exec_python run, present the results from its printed output directly as a readable table. Do NOT call exec_python or read_file again just to format — the output is already available.
 
-```json
-{
-  "pipeline1": ["snowflake_v1_ls", "snowflake_v2_ls"],
-  "pipeline2": ["snowflake_v2_native"]
-}
-```
-
-Also present as a readable table:
-
-```
-| Pipeline | Linked Services |
-|---|---|
-| pipeline1 | snowflake_v1_ls, snowflake_v2_ls |
-| pipeline2 | snowflake_v2_native |
-```
+If the print output is unclear (e.g. truncated or mixed with too many debug logs), fall back to `read_file("results.json")`.
 
 ## How Linked Services Appear in Pipelines
 
