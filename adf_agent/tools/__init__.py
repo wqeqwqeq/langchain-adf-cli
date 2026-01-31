@@ -18,6 +18,7 @@ from .general_tools import (
 from .adf_tools import (
     adf_pipeline_list,
     adf_pipeline_get,
+    adf_dataset_list,
     adf_linked_service_list,
     adf_linked_service_get,
     adf_linked_service_test,
@@ -49,6 +50,7 @@ ALL_TOOLS = [
     # ADF tools
     adf_pipeline_list,
     adf_pipeline_get,
+    adf_dataset_list,
     adf_linked_service_list,
     adf_linked_service_get,
     adf_linked_service_test,
@@ -73,6 +75,7 @@ __all__ = [
     # ADF tools
     "adf_pipeline_list",
     "adf_pipeline_get",
+    "adf_dataset_list",
     "adf_linked_service_list",
     "adf_linked_service_get",
     "adf_linked_service_test",

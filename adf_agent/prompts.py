@@ -84,6 +84,7 @@ before calling `resolve_adf_target`. Do NOT guess the missing parameter.
 ### ADF Tools
 - `adf_pipeline_list`: List all pipelines (saves to session directory)
 - `adf_pipeline_get`: Get pipeline definition (saves to session directory)
+- `adf_dataset_list`: List datasets with linked service mappings (saves to session directory)
 - `adf_linked_service_list`: List linked services (saves to session directory)
 - `adf_linked_service_get`: Get linked service details (saves to session directory)
 - `adf_linked_service_test`: Test linked service connection

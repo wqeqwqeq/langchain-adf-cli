@@ -126,6 +126,29 @@ class ADFClient:
         token = self.credential.get_token("https://management.azure.com/.default")
         return token.token
 
+    # === Dataset 操作 ===
+
+    def list_datasets(self) -> List[Dict[str, str]]:
+        """
+        列出所有 Datasets（轻量摘要）
+
+        Returns:
+            [{"name": "xxx", "type": "AzureSqlTable", "linked_service": "my_ls"}, ...]
+        """
+        result = []
+        for ds in self.client.datasets.list_by_factory(
+            resource_group_name=self.resource_group,
+            factory_name=self.factory_name,
+        ):
+            d = ds.as_dict()
+            ls_ref = d.get("properties", {}).get("linked_service_name", {})
+            result.append({
+                "name": d.get("name", "unknown"),
+                "type": d.get("properties", {}).get("type", "unknown"),
+                "linked_service": ls_ref.get("reference_name", "unknown"),
+            })
+        return result
+
     # === Linked Service 操作 ===
 
     def list_linked_services(self) -> List[Dict[str, str]]:

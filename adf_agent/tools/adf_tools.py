@@ -235,6 +235,57 @@ Try: adf_integration_runtime_enable(name="<ir-name>", minutes=10)
         return f"[FAILED] {str(e)}"
 
 
+# === Dataset 工具 ===
+
+@tool
+@require_adf_config
+def adf_dataset_list(runtime: ToolRuntime[ADFAgentContext]) -> str:
+    """
+    List all datasets in the Azure Data Factory with their linked service mappings.
+
+    Saves all datasets to a single datasets.json file.
+    Use read_file to inspect the file, or exec_python for cross-referencing with pipelines.
+    Results are cached for the session.
+
+    Returns:
+        List of datasets with linked service info, saved to datasets.json
+    """
+    try:
+        cache = runtime.context._cache
+        if "datasets" in cache:
+            datasets, datasets_path = cache["datasets"]
+        else:
+            client = _get_adf_client(runtime)
+            session_dir = runtime.context.session_dir
+            datasets = client.list_datasets()
+
+            datasets_path = session_dir / "datasets.json"
+            datasets_path.write_text(
+                json.dumps(datasets, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+
+            cache["datasets"] = (datasets, datasets_path)
+
+        summary_lines = [
+            f"  - {ds['name']} ({ds['type']}) → {ds['linked_service']}"
+            for ds in datasets
+        ]
+
+        return f"""[OK]
+
+Found {len(datasets)} datasets. Saved to {datasets_path}
+
+{chr(10).join(summary_lines[:50])}
+{"  ... and more" if len(datasets) > 50 else ""}
+
+Use read_file("datasets.json") to inspect the full list.
+Use exec_python to cross-reference datasets with pipelines.
+"""
+
+    except Exception as e:
+        return f"[FAILED] {str(e)}"
+
+
 # === Integration Runtime 工具 ===
 
 @tool
@@ -361,6 +412,7 @@ You can now:
 ADF_TOOLS = [
     adf_pipeline_list,
     adf_pipeline_get,
+    adf_dataset_list,
     adf_linked_service_list,
     adf_linked_service_get,
     adf_linked_service_test,
