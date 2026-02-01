@@ -14,22 +14,36 @@ The core idea: **atomic tools + composable skills** save tokens while enabling a
 4. **Progressive Cache Strategy** — ~40% average token savings per LLM call
 5. **`exec_python`** — inspired by Claude Code: explore files on disk, generate code to process data, avoid context window explosion
 
-```
-$ uv run adf_agent "Which pipelines in sales dev use Snowflake?"
+## Example agent workflow
+```mermaid
+flowchart LR
+    Q["🗣️ Which pipelines use Snowflake?"]
 
-  💭 Thinking...
-  🔧 resolve_adf_target("sales", "dev")         → OK
-  🔧 adf_pipeline_list()                        → 242 pipelines saved
-  🔧 adf_linked_service_list()                  → 18 linked services
-  🔧 adf_dataset_list()                         → 65 datasets saved
-  🔧 exec_python(cross_reference_script)         → 20 pipelines matched
+    Q --> A["1️⃣ resolve_adf_target\nsales · dev"]
 
-  Found 20 pipelines using Snowflake linked services:
-  | Pipeline         | Linked Service      |
-  |------------------|---------------------|
-  | daily_load       | snowflake_prod_ls   |
-  | hourly_sync      | snowflake_v2_ls     |
-  ...
+    A --> B1["2️⃣ adf_pipeline_list\n242 pipelines saved"]
+    A --> B2["2️⃣ adf_linked_service_list\n18 linked services"]
+    A --> B3["2️⃣ adf_dataset_list\n65 datasets saved"]
+
+    B1 --> C["3️⃣ Identify target\nSnowflake services"]
+    B2 --> C
+    B3 --> C
+
+    C --> D["4️⃣ read_file\n2–3 samples → learn schema"]
+
+    D --> E["5️⃣ exec_python\ncross-reference on disk"]
+
+    E --> F["✅ 20 pipelines matched"]
+
+    style Q fill:#1a1a2e,stroke:#e94560,color:#fff
+    style A fill:#16213e,stroke:#0f3460,color:#fff
+    style B1 fill:#0f3460,stroke:#533483,color:#fff
+    style B2 fill:#0f3460,stroke:#533483,color:#fff
+    style B3 fill:#0f3460,stroke:#533483,color:#fff
+    style C fill:#533483,stroke:#e94560,color:#fff
+    style D fill:#e94560,stroke:#fff,color:#fff
+    style E fill:#e94560,stroke:#fff,color:#fff
+    style F fill:#2d6a4f,stroke:#40916c,color:#fff
 ```
 
 ## Design Principles
@@ -66,8 +80,9 @@ Current skills:
 
 | Skill | Description |
 |-------|-------------|
-| `find-pipelines-by-service` | Cross-reference pipelines, datasets, and linked services to find all pipelines using a given service type (e.g. Snowflake). 7-step workflow: resolve target → list resources in parallel → identify matching services → read sample JSON to learn schema → write and run cross-reference script via `exec_python` → debug/retry → present results. |
-| `test-linked-service` | Test linked service connections with automatic IR detection and managed IR activation. Handles single service, by type, or all services. |
+| `find-pipelines-by-service` | Cross-reference pipelines, datasets, and linked services to find all pipelines using a given service type (e.g. Snowflake) |
+| `test-linked-service` | Test linked service connections with automatic IR detection and managed IR activation |
+
 
 ### 3. Reasoning-Action Loop
 
@@ -342,25 +357,7 @@ System prompt and skills catalog are marked with `cache_control: ephemeral` (5-m
 
 ## Progressive Prompt Caching
 
-Anthropic's prompt cache is a **prefix match** across three layers: `tools → system → messages`. A cache hit means the entire prefix up to a breakpoint matches a previous request exactly. We use progressive (incremental) caching to maximize cache hits during tool loops.
-
-### The Problem
-
-In a ReAct agent loop, each API call re-sends the full conversation history. Without caching on the messages layer, every call pays full price for all previous content — tool results, skill instructions, etc.
-
-LangChain's `ChatAnthropic` has built-in support for injecting `cache_control` into messages, but LangGraph's `create_agent` never passes the `cache_control` kwarg, so it was unused.
-
-### The Fix
-
-Both provider classes (`CachedChatAnthropic` and `ChatAzureFoundryClaude`) override `_get_request_payload` to inject `cache_control` automatically:
-
-```python
-def _get_request_payload(self, input_, *, stop=None, **kwargs):
-    kwargs.setdefault("cache_control", {"type": "ephemeral"})
-    return super()._get_request_payload(input_, stop=stop, **kwargs)
-```
-
-This places a cache breakpoint on the **last message block of every API call**. Each turn's breakpoint advances forward, so all previous content becomes cached prefix.
+Anthropic's prompt cache is a **prefix match** across three layers: `tools → system → messages`. Both provider classes override `_get_request_payload` to inject a `cache_control` breakpoint on the **last message block** of every API call. Each turn's breakpoint advances forward, so all previous content becomes cached prefix at 0.1× cost.
 
 ### How It Works
 
